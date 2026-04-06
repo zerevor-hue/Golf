@@ -307,7 +307,7 @@ td.slot.dragging { opacity: 0.4; }
 </style>
 </head>
 <body>
-<h1>예약 관리 시스템</h1>
+<h1>예약 관리 시스템 <span id="syncStatus" style="font-size:12px;font-weight:500;color:#aaa;margin-left:8px;">연결 중...</span></h1>
 <div class="boards">
   <div class="board screen" id="boardScreen"></div>
   <div class="board park" id="boardPark"></div>
@@ -367,6 +367,63 @@ td.slot.dragging { opacity: 0.4; }
 </div>
 
 <div class="drag-ghost" id="dragGhost"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDWHBf0wUme5xbbxD8ShjH341ZWYEYHvBQ",
+  authDomain: "golf-67d3b.firebaseapp.com",
+  databaseURL: "https://golf-67d3b-default-rtdb.firebaseio.com",
+  projectId: "golf-67d3b",
+  storageBucket: "golf-67d3b.firebasestorage.app",
+  messagingSenderId: "874950944467",
+  appId: "1:874950944467:web:f409def04d0b1ad9d45626"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+// Firebase 저장
+window.fbSave = function(type, key, data) {
+  const safKey = key.replace(/\./g, '_');
+  set(ref(db, `bookings/${type}/${safKey}`), data).catch(e => console.warn('FB 저장 실패:', e));
+};
+window.fbDelete = function(type, key) {
+  const safKey = key.replace(/\./g, '_');
+  remove(ref(db, `bookings/${type}/${safKey}`)).catch(e => console.warn('FB 삭제 실패:', e));
+};
+
+// Firebase 실시간 수신 — 데이터 변경 시 즉시 반영
+onValue(ref(db, 'bookings'), snapshot => {
+  const data = snapshot.val();
+  bookingsDB.screen = {};
+  bookingsDB.park = {};
+  if (data) {
+    ['screen','park'].forEach(type => {
+      if (!data[type]) return;
+      Object.values(data[type]).forEach(val => {
+        if (val && val._key) {
+          const { _key, ...rest } = val;
+          bookingsDB[type][_key] = rest;
+          bookingsDB[type][_key].palette = rest.palette;
+        }
+      });
+    });
+  }
+  ['screen','park'].forEach(type => {
+    refreshTable(type);
+    if (typeof renderCal === 'function') renderCal(type);
+  });
+  document.getElementById('syncStatus').textContent = '✓ 동기화됨';
+  document.getElementById('syncStatus').style.color = '#1a7a4a';
+}, err => {
+  document.getElementById('syncStatus').textContent = '⚠ 연결 실패';
+  document.getElementById('syncStatus').style.color = '#c0392b';
+});
+</script>
 
 <script>
 const PASTEL = [
@@ -442,14 +499,27 @@ const LS_PALETTE_KEY = 'golf_palette_idx_v1';
 
 const bookingsDB = { screen: {}, park: {} };
 
-function saveToStorage() {
+function saveToStorage(type, key, data) {
+  // 로컬스토리지 백업
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(bookingsDB));
+    const all = JSON.parse(localStorage.getItem(LS_KEY) || '{"screen":{},"park":{}}');
+    if (data === null) { delete all[type][key]; }
+    else { all[type][key] = data; }
+    localStorage.setItem(LS_KEY, JSON.stringify(all));
     localStorage.setItem(LS_PALETTE_KEY, String(paletteIdx));
-  } catch(e) { console.warn('저장 실패:', e); }
+  } catch(e) {}
+  // Firebase 동기화
+  if (data === null) {
+    if (window.fbDelete) window.fbDelete(type, key);
+  } else {
+    if (window.fbSave) window.fbSave(type, key, { ...data, _key: key });
+  }
+  document.getElementById('syncStatus').textContent = '↑ 저장 중...';
+  document.getElementById('syncStatus').style.color = '#888';
 }
 
 function loadFromStorage() {
+  // 로컬 데이터로 일단 빠르게 표시 (Firebase 수신 전까지)
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
@@ -459,7 +529,7 @@ function loadFromStorage() {
     }
     const pi = localStorage.getItem(LS_PALETTE_KEY);
     if (pi) paletteIdx = parseInt(pi) || 0;
-  } catch(e) { console.warn('불러오기 실패:', e); }
+  } catch(e) {}
 }
 
 // Boards config
@@ -887,10 +957,12 @@ document.addEventListener('mouseup', e => {
   if (drag.moved && drag.preview) {
     const { type, key, b } = drag;
     const { bayIdx, start, end } = drag.preview;
+    saveToStorage(type, key, null);
     delete bookingsDB[type][key];
     const newKey = bKey(b.date, bayIdx, start);
-    bookingsDB[type][newKey] = { ...b, bayIdx, start, end };
-    saveToStorage();
+    const newData = { ...b, bayIdx, start, end };
+    bookingsDB[type][newKey] = newData;
+    saveToStorage(type, newKey, newData);
     refreshTable(type);
     renderCal(type);
   } else {
@@ -988,9 +1060,12 @@ function onTouchEndDrag(e) {
   if (drag.moved && drag.preview) {
     const { type, key, b } = drag;
     const { bayIdx, start, end } = drag.preview;
+    saveToStorage(type, key, null);
     delete bookingsDB[type][key];
-    bookingsDB[type][bKey(b.date, bayIdx, start)] = { ...b, bayIdx, start, end };
-    saveToStorage();
+    const newKey = bKey(b.date, bayIdx, start);
+    const newData = { ...b, bayIdx, start, end };
+    bookingsDB[type][newKey] = newData;
+    saveToStorage(type, newKey, newData);
     refreshTable(type);
     renderCal(type);
   } else {
@@ -1235,15 +1310,20 @@ document.getElementById('mSave').addEventListener('click', () => {
   if (manager) { addToManagerList(manager); saveManager(manager); }
 
   const palette = (editKey && bookingsDB[type][editKey]) ? bookingsDB[type][editKey].palette : nextPalette();
-  if (editKey) delete bookingsDB[type][editKey];
-  bookingsDB[type][bKey(date,bayIdx,start)] = {
+  if (editKey) {
+    saveToStorage(type, editKey, null);
+    delete bookingsDB[type][editKey];
+  }
+  const newKey = bKey(date, bayIdx, start);
+  const newData = {
     date, bayIdx, start, end, name, phone,
     people: document.getElementById('mPeople').value,
     hole, manager,
     note: document.getElementById('mNote').value.trim(),
     palette
   };
-  saveToStorage();
+  bookingsDB[type][newKey] = newData;
+  saveToStorage(type, newKey, newData);
   refreshTable(type);
   renderCal(type);
   document.getElementById('modalBg').classList.remove('open');
@@ -1251,8 +1331,10 @@ document.getElementById('mSave').addEventListener('click', () => {
 
 document.getElementById('mDelete').addEventListener('click', () => {
   const { type, editKey } = modalState;
-  if (editKey) delete bookingsDB[type][editKey];
-  saveToStorage();
+  if (editKey) {
+    saveToStorage(type, editKey, null);
+    delete bookingsDB[type][editKey];
+  }
   refreshTable(type);
   renderCal(type);
   document.getElementById('modalBg').classList.remove('open');
