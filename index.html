@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>골프 예약 현황</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f0f0eb;
+  --surface: #ffffff;
+  --border: rgba(0,0,0,0.1);
+  --border-strong: rgba(0,0,0,0.18);
+  --text: #1a1a1a;
+  --text-muted: #888;
+  --text-faint: #bbb;
+  --accent-screen: #2563a8;
+  --accent-park: #1a7a4a;
+  --radius: 12px;
+  --shadow: 0 2px 14px rgba(0,0,0,0.09);
+}
+
+body {
+  font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 16px 12px 40px;
+  font-weight: 600;
+}
+
+h1 {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.boards {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* Outer card */
+.board {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 0.5px solid var(--border);
+  flex: 1;
+  min-width: 300px;
+  overflow: visible;
+}
+
+.board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 0.5px solid var(--border);
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.board-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.board-title strong { font-size: 16px; font-weight: 700; }
+.board.screen .board-title { color: var(--accent-screen); }
+.board.park .board-title { color: var(--accent-park); }
+
+.header-controls { display: flex; align-items: center; gap: 6px; }
+
+.today-btn {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--surface);
+  background: var(--text);
+  border: none;
+  border-radius: 5px;
+  padding: 5px 7px;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+.day-nav-btn {
+  background: var(--bg);
+  border: 0.5px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+  touch-action: manipulation;
+}
+.day-nav-btn:hover { background: #e4e4de; }
+
+.date-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 0.5px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.date-btn:hover { background: #e4e4de; }
+
+/* Calendar popup */
+.cal-popup {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 500;
+  background: var(--surface);
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px;
+  width: 230px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+}
+.cal-popup.open { display: block; }
+.cal-nav-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-nav-row span { font-size: 13px; font-weight: 700; }
+.cal-nav { background: none; border: none; cursor: pointer; font-size: 18px; color: var(--text-muted); padding: 0 4px; line-height: 1; touch-action: manipulation; font-weight: 700; }
+.cal-nav:hover { color: var(--text); }
+.cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 1px; }
+.cal-dow { font-size: 10px; font-weight: 700; text-align: center; padding: 3px 0; color: var(--text-muted); }
+.cal-dow.sun { color: #c0392b; }
+.cal-dow.sat { color: #2563a8; }
+.cal-day { font-size: 12px; font-weight: 600; text-align: center; padding: 5px 2px; border-radius: 4px; cursor: pointer; color: var(--text); touch-action: manipulation; }
+.cal-day:hover { background: var(--bg); }
+.cal-day.sun { color: #c0392b; }
+.cal-day.sat { color: #2563a8; }
+.cal-day.other { color: var(--text-faint); }
+.cal-day.today { font-weight: 700; }
+.cal-day.selected { background: #1a1a1a !important; color: #fff !important; }
+.cal-day.has-dot::after { content:''; display:block; width:3px; height:3px; border-radius:50%; background:#1a1a1a; margin:1px auto 0; }
+.cal-day.selected::after { background:#fff; }
+
+/* Inner table container — this is the "inner rounded box" */
+.table-wrap {
+  overflow-x: auto;
+  margin: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.13);
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 320px; table-layout: fixed; }
+th, td { border: 0.5px solid rgba(0,0,0,0.08); text-align: center; padding: 0; overflow: hidden; }
+
+/* Remove outer borders so rounded container shows cleanly */
+table > thead > tr > th:first-child,
+table > tbody > tr > td:first-child { border-left: none; }
+table > thead > tr > th:last-child,
+table > tbody > tr > td:last-child { border-right: none; }
+thead > tr > th { border-top: none; }
+tbody > tr:last-child > td { border-bottom: none; }
+
+th.corner { width: 62px; background: #fff; position: sticky; left: 0; z-index: 4; border-left: none; border-top: none; }
+th.col-head { background: #fafafa; font-weight: 800; font-size: 13px; padding: 11px 4px; min-width: 86px; border-top: none; }
+th.col-pad { display: none; }
+td.side-pad { display: none; }
+.board.screen { background: #F5FAFF; }
+.board.park { background: #F4FCF7; }
+.board.screen .board-header { background: #F5FAFF; border-bottom-color: rgba(37,99,168,0.1); }
+.board.park .board-header { background: #F4FCF7; border-bottom-color: rgba(26,122,74,0.1); }
+.board.screen .table-wrap { background: #fff; border-color: rgba(37,99,168,0.12); }
+.board.park .table-wrap { background: #fff; border-color: rgba(26,122,74,0.12); }
+.board.screen th.col-head { color: var(--accent-screen); }
+.board.park th.col-head { color: var(--accent-park); }
+
+td.time-label {
+  background: #fafafa;
+  color: #444;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 12px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+td.slot {
+  height: 22px;
+  cursor: pointer;
+  vertical-align: top;
+  background: #fff;
+  transition: background 0.1s;
+  position: relative;
+  user-select: none;
+  touch-action: none;
+  overflow: visible;
+}
+td.slot.booked { overflow: visible; }
+
+.slot-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 4px 4px;
+  z-index: 3;
+  pointer-events: none;
+  text-align: center;
+  overflow: hidden;
+  border-radius: 3px;
+}
+.slot-time { font-size: 12px; font-weight: 700; display: block; line-height: 1.6; opacity: 0.9; white-space: nowrap; }
+.slot-main { font-size: 14px; font-weight: 800; display: block; line-height: 1.5; white-space: nowrap; }
+.slot-sub { font-size: 12px; font-weight: 700; display: block; opacity: 0.85; line-height: 1.5; white-space: nowrap; }
+.slot-memo { font-size: 11px; font-weight: 600; display: block; opacity: 0.75; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+td.slot.empty:hover { background: #f0f6ff; }
+td.slot.drag-over { background: #e8f4e8 !important; outline: 2px dashed #1a7a4a; outline-offset: -2px; }
+td.slot.drag-invalid { background: #fff0f0 !important; outline: 2px dashed #c0392b; outline-offset: -2px; }
+td.slot.select-preview { background: #dbeafe !important; outline: 2px dashed #2563a8; outline-offset: -2px; }
+td.slot.booked { cursor: grab; }
+td.slot.booked:active { cursor: grabbing; }
+td.slot.dragging { opacity: 0.4; }
+
+/* Modal */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center; padding: 12px; }
+.modal-bg.open { display: flex; }
+.modal { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); max-height: 90vh; overflow-y: auto; }
+.modal h3 { font-size: 15px; font-weight: 800; margin-bottom: 14px; color: var(--text); }
+.modal label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; margin-top: 11px; }
+.modal input, .modal select, .modal textarea {
+  width: 100%; padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px; font-size: 14px;
+  color: var(--text); background: #fff;
+  font-family: inherit; resize: none;
+  -webkit-appearance: none; appearance: none;
+}
+.modal input:focus, .modal select:focus, .modal textarea:focus { outline: none; border-color: #666; }
+.time-row { display: flex; gap: 8px; align-items: flex-end; }
+.time-row > .ts { flex: 1; }
+.time-row .arrow { font-size: 15px; color: var(--text-muted); padding-bottom: 9px; flex-shrink: 0; }
+.err-box { font-size: 12px; color: #c0392b; background: #fff5f5; border: 1px solid #f5c6c6; border-radius: 6px; padding: 7px 10px; margin-top: 8px; display: none; }
+.modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+.mbtn { flex: 1; padding: 10px; border-radius: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border-strong); background: #fff; color: var(--text); font-family: inherit; font-weight: 700; touch-action: manipulation; }
+.mbtn:hover { background: var(--bg); }
+.mbtn.primary { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+.mbtn.primary:hover { background: #333; }
+.mbtn.del { border-color: #e74c3c; color: #c0392b; }
+.mbtn.del:hover { background: #fff5f5; }
+
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(255,255,255,0.95);
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  white-space: nowrap;
+  display: none;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  body { padding: 10px 6px 32px; }
+  h1 { font-size: 15px; margin-bottom: 10px; }
+  .boards { gap: 10px; flex-direction: column; }
+  .board { min-width: 0; width: 100%; flex: none; }
+  .table-wrap { margin: 6px; border-radius: 8px; }
+  th.col-head { min-width: 60px; font-size: 11px; padding: 8px 2px; }
+  td.time-label { font-size: 10px; padding: 3px 6px; }
+  td.slot { height: 20px; }
+  .slot-time { font-size: 10px; }
+  .slot-main { font-size: 11px; }
+  .slot-sub, .slot-memo { font-size: 10px; }
+  .board-header { padding: 8px 10px; flex-wrap: wrap; gap: 5px; }
+  .board-title { font-size: 12px; }
+  .board-title strong { font-size: 14px; }
+  .date-btn { font-size: 11px; padding: 4px 7px; }
+  .today-btn { font-size: 10px; padding: 4px 6px; }
+  .day-nav-btn { padding: 3px 7px; font-size: 16px; }
+  .modal { padding: 16px; }
+  .modal input, .modal select, .modal textarea { font-size: 16px; } /* prevent zoom on iOS */
+  th.corner { width: 48px; }
+}
+</style>
+</head>
+<body>
+<h1>예약 관리 시스템</h1>
+<div class="boards">
+  <div class="board screen" id="boardScreen"></div>
+  <div class="board park" id="boardPark"></div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h3 id="mTitle" style="margin-bottom:0;">예약 입력</h3>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="margin:0;font-size:12px;font-weight:700;color:var(--text-muted);">담당자</label>
+        <select id="mManager" style="width:auto;padding:6px 8px;font-size:13px;font-weight:700;">
+          <option value="">선택</option>
+          <option value="__new__">+ 직접 입력</option>
+        </select>
+      </div>
+    </div>
+    <div id="mManagerCustomWrap" style="display:none;margin-bottom:10px;">
+      <input type="text" id="mManagerCustom" placeholder="담당자 이름 입력 후 Enter" style="font-size:13px;"/>
+    </div>
+    <label>날짜</label><input type="date" id="mDate"/>
+    <label id="mBayLabel">방</label>
+    <select id="mBay"></select>
+    <label>시간</label>
+    <div class="time-row">
+      <div class="ts"><div style="font-size:10px;color:#999;margin-bottom:3px;font-weight:700;">시작</div><select id="mStart"></select></div>
+      <div class="arrow">→</div>
+      <div class="ts"><div style="font-size:10px;color:#999;margin-bottom:3px;font-weight:700;">종료</div><select id="mEnd"></select></div>
+    </div>
+    <div class="err-box" id="mErr"></div>
+    <label>예약자 정보</label>
+    <div style="display:flex;gap:8px;">
+      <input type="text" id="mName" placeholder="이름" style="flex:1;min-width:0;"/>
+      <input type="tel" id="mPhone" placeholder="연락처" style="flex:1.4;min-width:0;"/>
+    </div>
+    <label>인원</label>
+    <select id="mPeople">
+      <option value="1">1명</option><option value="2" selected>2명</option>
+      <option value="3">3명</option><option value="4">4명</option>
+      <option value="5">5명</option><option value="6">6명</option>
+      <option value="7">7명</option><option value="8">8명</option>
+    </select>
+    <label>홀 단위</label>
+    <select id="mHole">
+      <option value="9홀">9홀</option>
+      <option value="18홀" selected>18홀</option>
+      <option value="포섬">포섬</option>
+      <option value="포볼">포볼</option>
+    </select>
+    <label>메모 (선택)</label><textarea id="mNote" rows="2" placeholder="특이사항 등"></textarea>
+    <div class="modal-btns">
+      <button class="mbtn" id="mCancel">취소</button>
+      <button class="mbtn del" id="mDelete" style="display:none">삭제</button>
+      <button class="mbtn primary" id="mSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="drag-ghost" id="dragGhost"></div>
+
+<script>
+const PASTEL = [
+  {bg:'#FADADD',border:'#C97A85',text:'#7A3040'},
+  {bg:'#D4F1F4',border:'#5AACB8',text:'#1E6470'},
+  {bg:'#D5E8D4',border:'#6BAA6A',text:'#2E5E2D'},
+  {bg:'#FFF2CC',border:'#D6B656',text:'#7A5C00'},
+  {bg:'#DAE8FC',border:'#6C9FD8',text:'#1E4D7A'},
+  {bg:'#E1D5E7',border:'#9B72B0',text:'#4B2B6B'},
+  {bg:'#FFE6CC',border:'#D79B4A',text:'#7A4500'},
+  {bg:'#F8CECC',border:'#C4706A',text:'#6B2020'},
+];
+let paletteIdx = 0;
+function nextPalette() { return PASTEL[paletteIdx++ % PASTEL.length]; }
+
+const START_H = 9, END_H = 22;
+const slots = [];
+for (let h = START_H; h < END_H; h++) {
+  for (let m = 0; m < 60; m += 10) {
+    slots.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+  }
+}
+slots.push('22:00');
+function si(t) { return slots.indexOf(t); }
+
+function toDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function formatLabel(s) {
+  const [y,m,d] = s.split('-');
+  const dt = new Date(+y,+m-1,+d);
+  return `${+m}월 ${+d}일 (${['일','월','화','수','목','금','토'][dt.getDay()]})`;
+}
+
+function shiftDate(type, delta) {
+  const [y,m,d] = boardState[type].date.split('-').map(Number);
+  const dt = new Date(y, m-1, d + delta);
+  const ds = toDateStr(dt);
+  boardState[type].date = ds;
+  document.getElementById(`dateLabel_${type}`).textContent = formatLabel(ds);
+  refreshTable(type);
+  const popup = document.getElementById(`cal_${type}`);
+  if (popup.classList.contains('open')) {
+    boardState[type].calYear = dt.getFullYear();
+    boardState[type].calMonth = dt.getMonth();
+    renderCal(type);
+  }
+}
+
+// Manager persist (localStorage) — saved list
+const LS_KEY = 'golf_bookings_v1';
+const LS_MANAGER_KEY = 'golf_last_manager_v1';
+const LS_MANAGER_LIST_KEY = 'golf_manager_list_v1';
+
+function getSavedManager() { try { return localStorage.getItem(LS_MANAGER_KEY) || ''; } catch(e) { return ''; } }
+function saveManager(val) { try { localStorage.setItem(LS_MANAGER_KEY, val); } catch(e) {} }
+function getManagerList() { try { return JSON.parse(localStorage.getItem(LS_MANAGER_LIST_KEY) || '[]'); } catch(e) { return []; } }
+function addToManagerList(name) {
+  if (!name) return;
+  const list = getManagerList();
+  if (!list.includes(name)) { list.push(name); localStorage.setItem(LS_MANAGER_LIST_KEY, JSON.stringify(list)); }
+}
+
+function rebuildManagerSelect(selectedVal) {
+  const sel = document.getElementById('mManager');
+  const list = getManagerList();
+  sel.innerHTML = '<option value="">선택</option>';
+  list.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+  const addOpt = document.createElement('option'); addOpt.value = '__new__'; addOpt.textContent = '+ 직접 입력'; sel.appendChild(addOpt);
+  sel.value = (selectedVal && list.includes(selectedVal)) ? selectedVal : '';
+}
+const LS_PALETTE_KEY = 'golf_palette_idx_v1';
+
+const bookingsDB = { screen: {}, park: {} };
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(bookingsDB));
+    localStorage.setItem(LS_PALETTE_KEY, String(paletteIdx));
+  } catch(e) { console.warn('저장 실패:', e); }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.screen) Object.assign(bookingsDB.screen, parsed.screen);
+      if (parsed.park) Object.assign(bookingsDB.park, parsed.park);
+    }
+    const pi = localStorage.getItem(LS_PALETTE_KEY);
+    if (pi) paletteIdx = parseInt(pi) || 0;
+  } catch(e) { console.warn('불러오기 실패:', e); }
+}
+
+// Boards config
+const BOARDS = [
+  { id: 'boardScreen', type: 'screen', title: '스크린골프 예약 현황', bays: ['1번 방','3번 방','5번 방','7번 방'], accentClass: 'screen' },
+  { id: 'boardPark', type: 'park', title: '파크골프 예약 현황', bays: ['1번 타석','2번 타석','3번 타석','4번 타석'], accentClass: 'park' },
+];
+
+const boardState = { screen: { date: toDateStr(new Date()), calYear:0, calMonth:0 }, park: { date: toDateStr(new Date()), calYear:0, calMonth:0 } };
+
+// Drag state
+let drag = null;
+
+// Modal state
+let modalState = null;
+
+function bKey(date, bayIdx, start) { return `${date}__${bayIdx}__${start}`; }
+
+function getAt(type, date, bayIdx, time) {
+  const db = bookingsDB[type];
+  for (const key in db) {
+    const b = db[key];
+    if (b.date !== date || b.bayIdx !== bayIdx) continue;
+    if (si(time) >= si(b.start) && si(time) < si(b.end)) return { key, b };
+  }
+  return null;
+}
+
+function hasConflict(type, date, bayIdx, start, end, excludeKey) {
+  const s = si(start), e = si(end);
+  for (const key in bookingsDB[type]) {
+    if (key === excludeKey) continue;
+    const b = bookingsDB[type][key];
+    if (b.date !== date || b.bayIdx !== bayIdx) continue;
+    if (s < si(b.end) && e > si(b.start)) return true;
+  }
+  return false;
+}
+
+function hasBookingOnDate(type, date) {
+  return Object.values(bookingsDB[type]).some(b => b.date === date);
+}
+
+// ---- Calendar ----
+function buildCalPopup(type, containerEl, dateWrapEl) {
+  const popup = document.createElement('div');
+  popup.className = 'cal-popup';
+  popup.id = `cal_${type}`;
+
+  const navRow = document.createElement('div');
+  navRow.className = 'cal-nav-row';
+  const prev = document.createElement('button'); prev.className='cal-nav'; prev.textContent='‹';
+  const next = document.createElement('button'); next.className='cal-nav'; next.textContent='›';
+  const lbl = document.createElement('span'); lbl.id=`calLbl_${type}`;
+  navRow.append(prev, lbl, next);
+  popup.appendChild(navRow);
+
+  const grid = document.createElement('div');
+  grid.className = 'cal-grid';
+  grid.id = `calGrid_${type}`;
+  popup.appendChild(grid);
+
+  prev.addEventListener('click', e => { e.stopPropagation(); const s=boardState[type]; s.calMonth--; if(s.calMonth<0){s.calMonth=11;s.calYear--;} renderCal(type); });
+  next.addEventListener('click', e => { e.stopPropagation(); const s=boardState[type]; s.calMonth++; if(s.calMonth>11){s.calMonth=0;s.calYear++;} renderCal(type); });
+
+  dateWrapEl.appendChild(popup);
+  return popup;
+}
+
+function renderCal(type) {
+  const s = boardState[type];
+  document.getElementById(`calLbl_${type}`).textContent = `${s.calYear}년 ${s.calMonth+1}월`;
+  const grid = document.getElementById(`calGrid_${type}`);
+  grid.innerHTML = '';
+  const dows = ['일','월','화','수','목','금','토'];
+  dows.forEach((d,i) => {
+    const el = document.createElement('div');
+    el.className = 'cal-dow' + (i===0?' sun':i===6?' sat':'');
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+  const firstDay = new Date(s.calYear, s.calMonth, 1).getDay();
+  const daysInMonth = new Date(s.calYear, s.calMonth+1, 0).getDate();
+  const prevDays = new Date(s.calYear, s.calMonth, 0).getDate();
+  const todayStr = toDateStr(new Date());
+
+  for (let i=0; i<firstDay; i++) {
+    const el = document.createElement('div');
+    el.className='cal-day other'+(i===0?' sun':i===6?' sat':'');
+    el.textContent = prevDays - firstDay + 1 + i;
+    grid.appendChild(el);
+  }
+  for (let d=1; d<=daysInMonth; d++) {
+    const el = document.createElement('div');
+    const dow = (firstDay+d-1)%7;
+    const ds = `${s.calYear}-${String(s.calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    el.className = 'cal-day'+(dow===0?' sun':dow===6?' sat':'');
+    if (ds===todayStr) el.classList.add('today');
+    if (ds===boardState[type].date) el.classList.add('selected');
+    if (hasBookingOnDate(type, ds)) el.classList.add('has-dot');
+    el.textContent = d;
+    el.addEventListener('click', () => {
+      boardState[type].date = ds;
+      boardState[type].calYear = s.calYear;
+      boardState[type].calMonth = s.calMonth;
+      document.getElementById(`dateLabel_${type}`).textContent = formatLabel(ds);
+      renderCal(type);
+      refreshTable(type);
+      document.getElementById(`cal_${type}`).classList.remove('open');
+    });
+    grid.appendChild(el);
+  }
+  const rem = 42 - firstDay - daysInMonth;
+  for (let i=1; i<=rem; i++) {
+    const el = document.createElement('div');
+    const dow = (firstDay+daysInMonth+i-1)%7;
+    el.className='cal-day other'+(dow===0?' sun':dow===6?' sat':'');
+    el.textContent=i;
+    grid.appendChild(el);
+  }
+}
+
+// ---- Build board ----
+function buildBoard(cfg) {
+  const container = document.getElementById(cfg.id);
+  container.innerHTML = '';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'board-header';
+  const title = document.createElement('div');
+  title.className = 'board-title';
+  // Bold just the golf type prefix
+  const boldPart = cfg.type === 'screen' ? '스크린골프' : '파크골프';
+  const restPart = cfg.title.replace(boldPart, '');
+  title.innerHTML = `<strong>${boldPart}</strong>${restPart}`;
+  hdr.appendChild(title);
+
+  const dateWrap = document.createElement('div');
+  dateWrap.style.position = 'relative';
+
+  const controls = document.createElement('div');
+  controls.className = 'header-controls';
+
+  const todayBtn = document.createElement('button');
+  todayBtn.className = 'today-btn';
+  todayBtn.textContent = 'TODAY';
+  todayBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const todayStr = toDateStr(new Date());
+    boardState[cfg.type].date = todayStr;
+    document.getElementById(`dateLabel_${cfg.type}`).textContent = formatLabel(todayStr);
+    refreshTable(cfg.type);
+    renderCal(cfg.type);
+    document.getElementById(`cal_${cfg.type}`).classList.remove('open');
+  });
+  controls.appendChild(todayBtn);
+
+  // Prev day button
+  const prevDayBtn = document.createElement('button');
+  prevDayBtn.className = 'day-nav-btn';
+  prevDayBtn.innerHTML = '&#8249;';
+  prevDayBtn.title = '전날';
+  prevDayBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    shiftDate(cfg.type, -1);
+  });
+  controls.appendChild(prevDayBtn);
+
+  const dateBtn = document.createElement('button');
+  dateBtn.className = 'date-btn';
+  dateBtn.id = `dateBtn_${cfg.type}`;
+  const calIco = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1"/><line x1="1" y1="5.5" x2="15" y2="5.5" stroke="currentColor" stroke-width="1"/><line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="1" x2="11" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  const lblSpan = document.createElement('span');
+  lblSpan.id = `dateLabel_${cfg.type}`;
+  lblSpan.textContent = formatLabel(boardState[cfg.type].date);
+  dateBtn.innerHTML = calIco;
+  dateBtn.appendChild(lblSpan);
+  controls.appendChild(dateBtn);
+
+  // Next day button
+  const nextDayBtn = document.createElement('button');
+  nextDayBtn.className = 'day-nav-btn';
+  nextDayBtn.innerHTML = '&#8250;';
+  nextDayBtn.title = '다음날';
+  nextDayBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    shiftDate(cfg.type, +1);
+  });
+  controls.appendChild(nextDayBtn);
+
+  dateWrap.appendChild(controls);
+  buildCalPopup(cfg.type, container, dateWrap);
+  hdr.appendChild(dateWrap);
+  container.appendChild(hdr);
+
+  dateBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const popup = document.getElementById(`cal_${cfg.type}`);
+    if (!popup.classList.contains('open')) {
+      const [y,m] = boardState[cfg.type].date.split('-');
+      boardState[cfg.type].calYear = +y;
+      boardState[cfg.type].calMonth = +m - 1;
+      renderCal(cfg.type);
+    }
+    popup.classList.toggle('open');
+  });
+
+  // Table
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  const table = document.createElement('table');
+  table.id = `table_${cfg.type}`;
+
+  // thead - no col-pad
+  const thead = document.createElement('thead');
+  const hRow = document.createElement('tr');
+  const corner = document.createElement('th');
+  corner.className = 'corner';
+  hRow.appendChild(corner);
+  cfg.bays.forEach(bay => {
+    const th = document.createElement('th');
+    th.className = 'col-head';
+    th.textContent = bay;
+    hRow.appendChild(th);
+  });
+  thead.appendChild(hRow);
+  table.appendChild(thead);
+
+  // tbody - include 22:00 as display-only row
+  const tbody = document.createElement('tbody');
+  tbody.id = `tbody_${cfg.type}`;
+  const displaySlots = slots.slice(0,-1).concat(['22:00']);
+  displaySlots.forEach((time, rowIdx) => {
+    const isLast = (time === '22:00');
+    const row = document.createElement('tr');
+    const lbl = document.createElement('td');
+    lbl.className = 'time-label';
+    const isHour = time.endsWith(':00');
+    const isHalf = time.endsWith(':30');
+    const isEmphasis = isHour || isHalf;
+    lbl.textContent = time;
+    if (isEmphasis) {
+      lbl.style.fontWeight = '800';
+      lbl.style.fontSize = '12px';
+      lbl.style.color = '#222';
+    } else {
+      lbl.style.fontWeight = '500';
+      lbl.style.fontSize = '10px';
+      lbl.style.color = '#999';
+    }
+    if (isHour) row.style.borderTop = '1px solid rgba(0,0,0,0.1)';
+    if (isHalf) row.style.borderTop = '1px solid rgba(0,0,0,0.05)';
+    row.appendChild(lbl);
+    cfg.bays.forEach((bay, bayIdx) => {
+      const td = document.createElement('td');
+      td.className = isLast ? 'slot empty' : 'slot empty';
+      if (!isLast) {
+        td.dataset.type = cfg.type;
+        td.dataset.bay = bayIdx;
+        td.dataset.time = time;
+        td.dataset.bayName = bay;
+        if (isHour) td.style.borderTop = '1px solid rgba(0,0,0,0.1)';
+        if (isHalf) td.style.borderTop = '1px solid rgba(0,0,0,0.05)';
+        attachSlotEvents(td, cfg.type, bayIdx, time, bay);
+      } else {
+        td.style.cursor = 'default';
+        td.style.background = '#fafafa';
+        if (isHour) td.style.borderTop = '1px solid rgba(0,0,0,0.1)';
+      }
+      row.appendChild(td);
+    });
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  container.appendChild(wrap);
+}
+
+function attachSlotEvents(td, type, bayIdx, time, bayName) {
+  // Mouse events (PC)
+  td.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const found = getAt(type, boardState[type].date, bayIdx, time);
+    if (found) startDrag(e, type, found.key, found.b, td);
+    else startSelectDrag(e, type, bayIdx, time);
+  });
+  td.addEventListener('click', e => {
+    if (drag && drag.moved) return;
+    if (selectDrag && selectDrag.committed) return;
+    openModal(type, bayIdx, time, bayName);
+  });
+
+  // Touch events (Mobile)
+  td.addEventListener('touchstart', e => {
+    const found = getAt(type, boardState[type].date, bayIdx, time);
+    if (found) {
+      startDragTouch(e, type, found.key, found.b, td);
+    } else {
+      startSelectDragTouch(e, type, bayIdx, time);
+    }
+  }, { passive: false });
+}
+
+// ---- Select-drag (draw new reservation) ----
+let selectDrag = null;
+
+function startSelectDrag(e, type, bayIdx, startTime) {
+  e.preventDefault();
+  selectDrag = { type, bayIdx, startTime, endTime: startTime, moved: false, committed: false };
+  highlightSelectPreview();
+}
+
+function highlightSelectPreview() {
+  if (!selectDrag) return;
+  const { type, bayIdx, startTime, endTime } = selectDrag;
+  clearSelectPreview();
+  const si1 = si(startTime), si2 = si(endTime);
+  const from = Math.min(si1, si2), to = Math.max(si1, si2);
+  const tbody = document.getElementById(`tbody_${type}`);
+  if (!tbody) return;
+  Array.from(tbody.rows).forEach(row => {
+    Array.from(row.cells).slice(1).forEach(cell => {
+      if (parseInt(cell.dataset.bay) !== bayIdx) return;
+      const ct = si(cell.dataset.time);
+      if (ct >= from && ct <= to) cell.classList.add('select-preview');
+    });
+  });
+}
+
+function clearSelectPreview() {
+  document.querySelectorAll('.select-preview').forEach(el => el.classList.remove('select-preview'));
+}
+
+document.addEventListener('mousemove', e => {
+  if (selectDrag) {
+    selectDrag.moved = true;
+    // find slot under cursor
+    const ghost = document.getElementById('dragGhost');
+    ghost.style.display = 'none';
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    ghost.style.display = 'none';
+    const td = el ? el.closest('td.slot') : null;
+    if (td && td.dataset.type === selectDrag.type && parseInt(td.dataset.bay) === selectDrag.bayIdx) {
+      selectDrag.endTime = td.dataset.time;
+      highlightSelectPreview();
+    }
+    return;
+  }
+
+  if (!drag) return;
+  drag.moved = true;
+  const ghost = document.getElementById('dragGhost');
+  ghost.style.left = (e.clientX + 12) + 'px';
+  ghost.style.top = (e.clientY - 16) + 'px';
+
+  ghost.style.display = 'none';
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  ghost.style.display = 'block';
+
+  const td = el ? el.closest('td.slot') : null;
+  clearDragHighlights();
+
+  if (td && td.dataset.type === drag.type) {
+    const targetBay = parseInt(td.dataset.bay);
+    const targetTime = td.dataset.time;
+    const newStartIdx = si(targetTime) - drag.clickOffset;
+    const newEndIdx = newStartIdx + drag.duration;
+
+    if (newStartIdx >= 0 && newEndIdx < slots.length) {
+      const newStart = slots[newStartIdx];
+      const newEnd = slots[newEndIdx];
+      const conflict = hasConflict(drag.type, drag.b.date, targetBay, newStart, newEnd, drag.key);
+
+      const tbody = document.getElementById(`tbody_${drag.type}`);
+      Array.from(tbody.rows).forEach(row => {
+        Array.from(row.cells).slice(1).forEach(cell => {
+          const cellBay = parseInt(cell.dataset.bay);
+          const cellTimeIdx = si(cell.dataset.time);
+          if (cellBay === targetBay && cellTimeIdx >= newStartIdx && cellTimeIdx < newEndIdx) {
+            cell.classList.add(conflict ? 'drag-invalid' : 'drag-over');
+          }
+        });
+      });
+      drag.preview = conflict ? null : { bayIdx: targetBay, start: newStart, end: newEnd };
+    } else {
+      drag.preview = null;
+    }
+  } else {
+    drag.preview = null;
+  }
+});
+
+function clearDragHighlights() {
+  document.querySelectorAll('.drag-over, .drag-invalid').forEach(el => {
+    el.classList.remove('drag-over', 'drag-invalid');
+  });
+}
+
+document.addEventListener('mouseup', e => {
+  if (selectDrag) {
+    clearSelectPreview();
+    if (selectDrag.moved) {
+      // Determine start/end from drag direction
+      const si1 = si(selectDrag.startTime), si2 = si(selectDrag.endTime);
+      const fromIdx = Math.min(si1, si2);
+      const toIdx = Math.max(si1, si2) + 1; // end is exclusive (one slot beyond)
+      const start = slots[fromIdx];
+      const end = slots[Math.min(toIdx, slots.length - 1)];
+      selectDrag.committed = true;
+      const capturedType = selectDrag.type;
+      const capturedBay = selectDrag.bayIdx;
+      selectDrag = null;
+      openModalForNew(capturedType, capturedBay, start, end);
+    } else {
+      selectDrag = null;
+    }
+    return;
+  }
+
+  if (!drag) return;
+  document.getElementById('dragGhost').style.display = 'none';
+  clearDragHighlights();
+
+  if (drag.moved && drag.preview) {
+    const { type, key, b } = drag;
+    const { bayIdx, start, end } = drag.preview;
+    delete bookingsDB[type][key];
+    const newKey = bKey(b.date, bayIdx, start);
+    bookingsDB[type][newKey] = { ...b, bayIdx, start, end };
+    saveToStorage();
+    refreshTable(type);
+    renderCal(type);
+  } else {
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    refreshTable(drag.type);
+  }
+
+  drag = null;
+});
+
+// ---- Drag (move existing booking) ----
+function startDrag(e, type, key, b, originTd) {
+  e.preventDefault();
+  const duration = si(b.end) - si(b.start);
+  const originSlotIdx = si(originTd.dataset.time);
+  const clickOffset = originSlotIdx - si(b.start);
+
+  drag = { type, key, b, duration, clickOffset, originTd, moved: false };
+
+  const ghost = document.getElementById('dragGhost');
+  ghost.textContent = `${b.name} (${b.people}명) · ${duration/2}시간`;
+  ghost.style.display = 'block';
+  ghost.style.left = (e.clientX + 12) + 'px';
+  ghost.style.top = (e.clientY - 16) + 'px';
+
+  originTd.classList.add('dragging');
+  getDragCells(type, b).forEach(td => td.classList.add('dragging'));
+}
+
+function getDragCells(type, b) {
+  const tbody = document.getElementById(`tbody_${type}`);
+  if (!tbody) return [];
+  const s = si(b.start), e = si(b.end);
+  const cells = [];
+  Array.from(tbody.rows).forEach(row => {
+    Array.from(row.cells).slice(1).forEach(td => {
+      const t = si(td.dataset.time);
+      if (parseInt(td.dataset.bay) === b.bayIdx && t >= s && t < e) cells.push(td);
+    });
+  });
+  return cells;
+}
+
+// Touch helpers
+function getTdAtPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el ? el.closest('td.slot') : null;
+}
+
+function startDragTouch(e, type, key, b, originTd) {
+  e.preventDefault();
+  const t = e.touches[0];
+  const duration = si(b.end) - si(b.start);
+  const clickOffset = si(originTd.dataset.time) - si(b.start);
+  drag = { type, key, b, duration, clickOffset, originTd, moved: false };
+  originTd.classList.add('dragging');
+  getDragCells(type, b).forEach(td => td.classList.add('dragging'));
+
+  originTd.addEventListener('touchmove', onTouchMoveDrag, { passive: false });
+  originTd.addEventListener('touchend', onTouchEndDrag);
+}
+
+function onTouchMoveDrag(e) {
+  e.preventDefault();
+  if (!drag) return;
+  drag.moved = true;
+  const t = e.touches[0];
+  clearDragHighlights();
+  const td = getTdAtPoint(t.clientX, t.clientY);
+  if (td && td.dataset.type === drag.type) {
+    const targetBay = parseInt(td.dataset.bay);
+    const newStartIdx = si(td.dataset.time) - drag.clickOffset;
+    const newEndIdx = newStartIdx + drag.duration;
+    if (newStartIdx >= 0 && newEndIdx < slots.length) {
+      const newStart = slots[newStartIdx], newEnd = slots[newEndIdx];
+      const conflict = hasConflict(drag.type, drag.b.date, targetBay, newStart, newEnd, drag.key);
+      const tbody = document.getElementById(`tbody_${drag.type}`);
+      Array.from(tbody.rows).forEach(row => {
+        Array.from(row.cells).slice(1).forEach(cell => {
+          const ci = si(cell.dataset.time);
+          if (parseInt(cell.dataset.bay) === targetBay && ci >= newStartIdx && ci < newEndIdx)
+            cell.classList.add(conflict ? 'drag-invalid' : 'drag-over');
+        });
+      });
+      drag.preview = conflict ? null : { bayIdx: targetBay, start: newStart, end: newEnd };
+    } else { drag.preview = null; }
+  } else { drag.preview = null; }
+}
+
+function onTouchEndDrag(e) {
+  if (!drag) return;
+  this.removeEventListener('touchmove', onTouchMoveDrag);
+  this.removeEventListener('touchend', onTouchEndDrag);
+  clearDragHighlights();
+  if (drag.moved && drag.preview) {
+    const { type, key, b } = drag;
+    const { bayIdx, start, end } = drag.preview;
+    delete bookingsDB[type][key];
+    bookingsDB[type][bKey(b.date, bayIdx, start)] = { ...b, bayIdx, start, end };
+    saveToStorage();
+    refreshTable(type);
+    renderCal(type);
+  } else {
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    refreshTable(drag.type);
+  }
+  drag = null;
+}
+
+function startSelectDragTouch(e, type, bayIdx, startTime) {
+  e.preventDefault();
+  selectDrag = { type, bayIdx, startTime, endTime: startTime, moved: false, committed: false };
+  highlightSelectPreview();
+
+  const handler = e2 => {
+    e2.preventDefault();
+    selectDrag.moved = true;
+    const t = e2.touches[0];
+    const td = getTdAtPoint(t.clientX, t.clientY);
+    if (td && td.dataset.type === selectDrag.type && parseInt(td.dataset.bay) === selectDrag.bayIdx) {
+      selectDrag.endTime = td.dataset.time;
+      highlightSelectPreview();
+    }
+  };
+  const endHandler = () => {
+    document.removeEventListener('touchmove', handler);
+    document.removeEventListener('touchend', endHandler);
+    clearSelectPreview();
+    if (selectDrag && selectDrag.moved) {
+      const si1 = si(selectDrag.startTime), si2 = si(selectDrag.endTime);
+      const fromIdx = Math.min(si1, si2);
+      const toIdx = Math.max(si1, si2) + 1;
+      const start = slots[fromIdx];
+      const end = slots[Math.min(toIdx, slots.length - 1)];
+      selectDrag.committed = true;
+      const capturedType = selectDrag.type, capturedBay = selectDrag.bayIdx;
+      selectDrag = null;
+      openModalForNew(capturedType, capturedBay, start, end);
+    } else {
+      if (selectDrag) {
+        const { type: t2, bayIdx: bi2 } = selectDrag;
+        selectDrag = null;
+        openModal(t2, bi2, startTime, '');
+      }
+    }
+  };
+  document.addEventListener('touchmove', handler, { passive: false });
+  document.addEventListener('touchend', endHandler);
+}
+
+// Open modal pre-filled with drag-selected time range
+function openModalForNew(type, bayIdx, start, end) {
+  const cfg = BOARDS.find(c => c.type === type);
+  modalState = { type, editKey: null };
+  document.getElementById('mTitle').textContent = '예약 입력';
+  document.getElementById('mBayLabel').textContent = type === 'park' ? '타석' : '방';
+  document.getElementById('mDate').value = boardState[type].date;
+  document.getElementById('mErr').style.display = 'none';
+  const baySelect = document.getElementById('mBay');
+  baySelect.innerHTML = '';
+  cfg.bays.forEach((bn, i) => { const o=document.createElement('option'); o.value=i; o.textContent=bn; baySelect.appendChild(o); });
+  baySelect.value = bayIdx;
+  populateTimeSelects(start);
+  document.getElementById('mEnd').value = end;
+  updateEndOpts();
+  document.getElementById('mName').value = '';
+  document.getElementById('mPhone').value = '';
+  document.getElementById('mPeople').value = '2';
+  document.getElementById('mHole').value = '18홀';
+  document.getElementById('mNote').value = '';
+
+  const savedMgr = getSavedManager();
+  rebuildManagerSelect(savedMgr);
+  document.getElementById('mManagerCustomWrap').style.display = 'none';
+
+  document.getElementById('mDelete').style.display = 'none';
+  document.getElementById('modalBg').classList.add('open');
+  setTimeout(() => document.getElementById('mName').focus(), 50);
+}
+
+
+function refreshTable(type) {
+  const tbody = document.getElementById(`tbody_${type}`);
+  if (!tbody) return;
+  const date = boardState[type].date;
+  const timeSlots = slots.slice(0,-1);
+
+  Array.from(tbody.rows).forEach((row, ti) => {
+    const time = timeSlots[ti];
+    Array.from(row.cells).slice(1).forEach((td, bi) => {
+      const found = getAt(type, date, bi, time);
+      if (found) {
+        const b = found.b, p = b.palette;
+        td.className = 'slot booked';
+        td.style.background = p.bg;
+        td.style.borderColor = 'rgba(0,0,0,0.06)';
+        const isStart = (time === b.start);
+        const duration = si(b.end) - si(b.start);
+        const totalHeight = duration * 22;
+        if (isStart) {
+          td.style.overflow = 'visible';
+          td.style.position = 'relative';
+          td.style.zIndex = '3';
+          const memoLine = b.note ? `<span class="slot-memo" style="color:${p.text}">📝 ${b.note}</span>` : '';
+          td.innerHTML = `<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};pointer-events:none;">
+            <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
+            <span class="slot-main" style="color:${p.text}">${b.name} ${b.people}명</span>
+            <span class="slot-sub" style="color:${p.text}">${b.hole||''}</span>
+            ${memoLine}
+          </div>`;
+        } else {
+          td.style.overflow = 'visible';
+          td.style.position = 'relative';
+          td.innerHTML = '';
+        }
+      } else {
+        td.className = 'slot empty';
+        td.style.cssText = '';
+        td.innerHTML = '';
+      }
+    });
+  });
+}
+
+// ---- Modal ----
+function openModal(type, bayIdx, time, bayName) {
+  const found = getAt(type, boardState[type].date, bayIdx, time);
+  const b = found ? found.b : null;
+  const cfg = BOARDS.find(c => c.type === type);
+
+  modalState = { type, editKey: found ? found.key : null };
+
+  document.getElementById('mTitle').textContent = b ? '예약 수정' : '예약 입력';
+  document.getElementById('mBayLabel').textContent = type === 'park' ? '타석' : '방';
+  document.getElementById('mDate').value = b ? b.date : boardState[type].date;
+  document.getElementById('mErr').style.display = 'none';
+
+  // Bay select
+  const baySelect = document.getElementById('mBay');
+  baySelect.innerHTML = '';
+  cfg.bays.forEach((bn, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = bn;
+    baySelect.appendChild(o);
+  });
+  baySelect.value = b ? b.bayIdx : bayIdx;
+
+  // Time selects
+  populateTimeSelects(b ? b.start : time);
+  if (b) { document.getElementById('mEnd').value = b.end; }
+  else {
+    const newEndIdx = Math.min(si(time)+2, slots.length-1);
+    document.getElementById('mEnd').value = slots[newEndIdx];
+  }
+  updateEndOpts();
+
+  document.getElementById('mName').value = b ? b.name : '';
+  document.getElementById('mPhone').value = b ? (b.phone||'') : '';
+  document.getElementById('mPeople').value = b ? b.people : '2';
+  document.getElementById('mHole').value = b ? (b.hole||'18홀') : '18홀';
+  document.getElementById('mNote').value = b ? (b.note||'') : '';
+
+  // Manager
+  const mgr = b ? (b.manager||'') : getSavedManager();
+  rebuildManagerSelect(mgr);
+  document.getElementById('mManagerCustomWrap').style.display = 'none';
+
+  document.getElementById('mDelete').style.display = b ? 'block' : 'none';
+  document.getElementById('modalBg').classList.add('open');
+  setTimeout(() => document.getElementById('mName').focus(), 50);
+}
+
+function populateTimeSelects(startTime) {
+  const ss = document.getElementById('mStart');
+  const es = document.getElementById('mEnd');
+  ss.innerHTML = ''; es.innerHTML = '';
+  slots.slice(0,-1).forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; ss.appendChild(o); });
+  slots.slice(1).forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; es.appendChild(o); });
+  ss.value = startTime;
+  updateEndOpts();
+}
+
+function updateEndOpts() {
+  const sv = si(document.getElementById('mStart').value);
+  const es = document.getElementById('mEnd');
+  Array.from(es.options).forEach(o => { o.disabled = si(o.value) <= sv; });
+  if (si(es.value) <= sv) {
+    const first = Array.from(es.options).find(o => !o.disabled);
+    if (first) es.value = first.value;
+  }
+}
+
+document.getElementById('mStart').addEventListener('change', updateEndOpts);
+
+document.getElementById('mManager').addEventListener('change', function() {
+  if (this.value === '__new__') {
+    document.getElementById('mManagerCustomWrap').style.display = 'block';
+    document.getElementById('mManagerCustom').value = '';
+    setTimeout(() => document.getElementById('mManagerCustom').focus(), 30);
+  } else {
+    document.getElementById('mManagerCustomWrap').style.display = 'none';
+    document.getElementById('mManagerCustom').value = '';
+    if (this.value) saveManager(this.value);
+  }
+});
+
+document.getElementById('mManagerCustom').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const name = this.value.trim();
+    if (!name) return;
+    addToManagerList(name);
+    saveManager(name);
+    rebuildManagerSelect(name);
+    document.getElementById('mManagerCustomWrap').style.display = 'none';
+    this.value = '';
+  }
+});
+
+document.getElementById('mSave').addEventListener('click', () => {
+  const { type, editKey } = modalState;
+  const name = document.getElementById('mName').value.trim();
+  const phone = document.getElementById('mPhone').value.trim();
+  const date = document.getElementById('mDate').value;
+  const bayIdx = parseInt(document.getElementById('mBay').value);
+  const start = document.getElementById('mStart').value;
+  const end = document.getElementById('mEnd').value;
+  const hole = document.getElementById('mHole').value;
+  const mgrSel = document.getElementById('mManager');
+  const manager = mgrSel.value === '__new__'
+    ? document.getElementById('mManagerCustom').value.trim()
+    : mgrSel.value;
+  const errEl = document.getElementById('mErr');
+
+  if (si(end) <= si(start)) { errEl.textContent='종료 시간은 시작 시간 이후여야 합니다.'; errEl.style.display='block'; return; }
+  if (!name) { document.getElementById('mName').focus(); return; }
+  if (hasConflict(type, date, bayIdx, start, end, editKey)) {
+    errEl.textContent='해당 시간대에 이미 예약이 있습니다. (ERR: 예약 중복)';
+    errEl.style.display='block'; return;
+  }
+  errEl.style.display='none';
+
+  if (manager) { addToManagerList(manager); saveManager(manager); }
+
+  const palette = (editKey && bookingsDB[type][editKey]) ? bookingsDB[type][editKey].palette : nextPalette();
+  if (editKey) delete bookingsDB[type][editKey];
+  bookingsDB[type][bKey(date,bayIdx,start)] = {
+    date, bayIdx, start, end, name, phone,
+    people: document.getElementById('mPeople').value,
+    hole, manager,
+    note: document.getElementById('mNote').value.trim(),
+    palette
+  };
+  saveToStorage();
+  refreshTable(type);
+  renderCal(type);
+  document.getElementById('modalBg').classList.remove('open');
+});
+
+document.getElementById('mDelete').addEventListener('click', () => {
+  const { type, editKey } = modalState;
+  if (editKey) delete bookingsDB[type][editKey];
+  saveToStorage();
+  refreshTable(type);
+  renderCal(type);
+  document.getElementById('modalBg').classList.remove('open');
+});
+
+document.getElementById('mCancel').addEventListener('click', () => { document.getElementById('modalBg').classList.remove('open'); });
+
+// Only close modal on a genuine click outside (not from drag release)
+let modalMouseDownTarget = null;
+document.getElementById('modalBg').addEventListener('mousedown', e => { modalMouseDownTarget = e.target; });
+document.getElementById('modalBg').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalBg') && modalMouseDownTarget === document.getElementById('modalBg')) {
+    document.getElementById('modalBg').classList.remove('open');
+  }
+  modalMouseDownTarget = null;
+});
+
+document.addEventListener('click', e => {
+  BOARDS.forEach(cfg => {
+    const popup = document.getElementById(`cal_${cfg.type}`);
+    const btn = document.getElementById(`dateBtn_${cfg.type}`);
+    if (popup && !popup.contains(e.target) && !btn.contains(e.target)) popup.classList.remove('open');
+  });
+});
+
+// Init
+loadFromStorage();
+BOARDS.forEach(cfg => buildBoard(cfg));
+BOARDS.forEach(cfg => refreshTable(cfg.type));
+</script>
+</body>
+</html>
