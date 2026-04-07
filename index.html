@@ -313,6 +313,16 @@ td.slot.dragging { opacity: 0.4; }
   <div class="board park" id="boardPark"></div>
 </div>
 
+<!-- 로딩 오버레이 -->
+<div id="loadingOverlay" style="
+  position:fixed; inset:0; background:rgba(255,255,255,0.88);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:9999; font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="width:36px;height:36px;border:3px solid #ddd;border-top-color:#1a7a4a;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <p style="margin-top:14px;font-size:14px;font-weight:600;color:#555;">데이터 불러오는 중...</p>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</div>
+
 <div class="modal-bg" id="modalBg">
   <div class="modal">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
@@ -396,7 +406,8 @@ window.fbDelete = function(type, key) {
   remove(ref(db, `bookings/${type}/${safKey}`)).catch(e => console.warn('FB 삭제 실패:', e));
 };
 
-// Firebase 실시간 수신 — 데이터 변경 시 즉시 반영
+// Firebase 실시간 수신 — Firebase가 유일한 데이터 소스
+let fbInitialized = false;
 onValue(ref(db, 'bookings'), snapshot => {
   const data = snapshot.val();
   bookingsDB.screen = {};
@@ -408,20 +419,31 @@ onValue(ref(db, 'bookings'), snapshot => {
         if (val && val._key) {
           const { _key, ...rest } = val;
           bookingsDB[type][_key] = rest;
-          bookingsDB[type][_key].palette = rest.palette;
         }
       });
     });
   }
   ['screen','park'].forEach(type => {
-    refreshTable(type);
+    if (typeof refreshTable === 'function') refreshTable(type);
     if (typeof renderCal === 'function') renderCal(type);
   });
   document.getElementById('syncStatus').textContent = '✓ 동기화됨';
   document.getElementById('syncStatus').style.color = '#1a7a4a';
+
+  // 첫 수신 시 로딩 오버레이 제거
+  if (!fbInitialized) {
+    fbInitialized = true;
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
 }, err => {
-  document.getElementById('syncStatus').textContent = '⚠ 연결 실패';
+  document.getElementById('syncStatus').textContent = '⚠ 연결 실패 — 새로고침 해주세요';
   document.getElementById('syncStatus').style.color = '#c0392b';
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.querySelector('p').textContent = '연결 실패 — 네트워크를 확인해주세요';
+    overlay.querySelector('div').style.borderTopColor = '#c0392b';
+  }
 });
 </script>
 
@@ -473,8 +495,7 @@ function shiftDate(type, delta) {
   }
 }
 
-// Manager persist (localStorage) — saved list
-const LS_KEY = 'golf_bookings_v1';
+// Manager persist (localStorage) — 담당자 목록만 로컬 저장 (예약 데이터 X)
 const LS_MANAGER_KEY = 'golf_last_manager_v1';
 const LS_MANAGER_LIST_KEY = 'golf_manager_list_v1';
 
@@ -495,20 +516,10 @@ function rebuildManagerSelect(selectedVal) {
   const addOpt = document.createElement('option'); addOpt.value = '__new__'; addOpt.textContent = '+ 직접 입력'; sel.appendChild(addOpt);
   sel.value = (selectedVal && list.includes(selectedVal)) ? selectedVal : '';
 }
-const LS_PALETTE_KEY = 'golf_palette_idx_v1';
-
 const bookingsDB = { screen: {}, park: {} };
 
+// Firebase 전용 저장 — 로컬 캐시 없음
 function saveToStorage(type, key, data) {
-  // 로컬스토리지 백업
-  try {
-    const all = JSON.parse(localStorage.getItem(LS_KEY) || '{"screen":{},"park":{}}');
-    if (data === null) { delete all[type][key]; }
-    else { all[type][key] = data; }
-    localStorage.setItem(LS_KEY, JSON.stringify(all));
-    localStorage.setItem(LS_PALETTE_KEY, String(paletteIdx));
-  } catch(e) {}
-  // Firebase 동기화
   if (data === null) {
     if (window.fbDelete) window.fbDelete(type, key);
   } else {
@@ -518,19 +529,8 @@ function saveToStorage(type, key, data) {
   document.getElementById('syncStatus').style.color = '#888';
 }
 
-function loadFromStorage() {
-  // 로컬 데이터로 일단 빠르게 표시 (Firebase 수신 전까지)
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.screen) Object.assign(bookingsDB.screen, parsed.screen);
-      if (parsed.park) Object.assign(bookingsDB.park, parsed.park);
-    }
-    const pi = localStorage.getItem(LS_PALETTE_KEY);
-    if (pi) paletteIdx = parseInt(pi) || 0;
-  } catch(e) {}
-}
+// loadFromStorage는 Firebase onValue가 대신하므로 빈 함수
+function loadFromStorage() {}
 
 // Boards config
 const BOARDS = [
