@@ -448,18 +448,28 @@ onValue(ref(db, 'bookings'), snapshot => {
 </script>
 
 <script>
-const PASTEL = [
-  {bg:'#FADADD',border:'#C97A85',text:'#7A3040'},
-  {bg:'#D4F1F4',border:'#5AACB8',text:'#1E6470'},
-  {bg:'#D5E8D4',border:'#6BAA6A',text:'#2E5E2D'},
-  {bg:'#FFF2CC',border:'#D6B656',text:'#7A5C00'},
-  {bg:'#DAE8FC',border:'#6C9FD8',text:'#1E4D7A'},
-  {bg:'#E1D5E7',border:'#9B72B0',text:'#4B2B6B'},
-  {bg:'#FFE6CC',border:'#D79B4A',text:'#7A4500'},
-  {bg:'#F8CECC',border:'#C4706A',text:'#6B2020'},
+// 스크린골프: 하늘색 계열 / 파크골프: 초록색 계열 파스텔
+const PALETTE_SCREEN = [
+  {bg:'#DAEEFF',text:'#1a4a6e'},
+  {bg:'#C8E8FF',text:'#153d5c'},
+  {bg:'#D4F0FF',text:'#1a4a6e'},
+  {bg:'#BFE4FF',text:'#0f3350'},
+  {bg:'#E0F4FF',text:'#1a4a6e'},
 ];
-let paletteIdx = 0;
-function nextPalette() { return PASTEL[paletteIdx++ % PASTEL.length]; }
+const PALETTE_PARK = [
+  {bg:'#C8EDCC',text:'#1a4d22'},
+  {bg:'#B8E6BC',text:'#144018'},
+  {bg:'#CBEDD0',text:'#1a4d22'},
+  {bg:'#A8DFB0',text:'#0f3314'},
+  {bg:'#D4F0D8',text:'#1a4d22'},
+];
+const paletteIdx = { screen: 0, park: 0 };
+function nextPalette(type) {
+  const arr = type === 'park' ? PALETTE_PARK : PALETTE_SCREEN;
+  const p = arr[paletteIdx[type] % arr.length];
+  paletteIdx[type]++;
+  return p;
+}
 
 const START_H = 9, END_H = 22;
 const slots = [];
@@ -1158,10 +1168,12 @@ function refreshTable(type) {
     Array.from(row.cells).slice(1).forEach((td, bi) => {
       const found = getAt(type, date, bi, time);
       if (found) {
-        const b = found.b, p = b.palette;
+        const b = found.b;
+        // 팔레트 없거나 구형 데이터면 타입에 맞게 기본값 적용
+        const p = b.palette || nextPalette(type);
         td.className = 'slot booked';
         td.style.background = p.bg;
-        td.style.borderColor = 'rgba(0,0,0,0.06)';
+        td.style.borderColor = 'rgba(0,0,0,0.08)';
         const isStart = (time === b.start);
         const duration = si(b.end) - si(b.start);
         const totalHeight = duration * 22;
@@ -1170,7 +1182,7 @@ function refreshTable(type) {
           td.style.position = 'relative';
           td.style.zIndex = '3';
           const memoLine = b.note ? `<span class="slot-memo" style="color:${p.text}">📝 ${b.note}</span>` : '';
-          td.innerHTML = `<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};pointer-events:none;">
+          td.innerHTML = `<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};border:1.5px solid rgba(0,0,0,0.45);border-radius:4px;pointer-events:none;">
             <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
             <span class="slot-main" style="color:${p.text}">${b.name} ${b.people}명</span>
             <span class="slot-sub" style="color:${p.text}">${b.hole||''}</span>
@@ -1309,7 +1321,7 @@ document.getElementById('mSave').addEventListener('click', () => {
 
   if (manager) { addToManagerList(manager); saveManager(manager); }
 
-  const palette = (editKey && bookingsDB[type][editKey]) ? bookingsDB[type][editKey].palette : nextPalette();
+  const palette = (editKey && bookingsDB[type][editKey]) ? bookingsDB[type][editKey].palette : nextPalette(type);
   if (editKey) {
     saveToStorage(type, editKey, null);
     delete bookingsDB[type][editKey];
