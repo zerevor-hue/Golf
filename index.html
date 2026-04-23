@@ -188,6 +188,10 @@ td.slot.dragging { opacity: 0.4; }
 .b-good { background: #daeeff; color: #1a4a6e; }
 .b-normal { background: #f0f0eb; color: #777; }
 .b-blacklist { background: #FFD6D6; color: #7a1a1a; }
+.b-screen { background: #daeeff; color: #1a4a6e; }
+.b-regional { background: #e8e1f5; color: #4b2b6b; }
+.b-nonmember { background: #f0f0eb; color: #555; }
+.b-park { background: #c8edcc; color: #1a4d22; }
 .row-blacklist td { background: #fff5f5 !important; }
 .row-blacklist td:first-child { border-left: 3px solid #e74c3c; }
 .b-screen { background: #daeeff; color: #1a4a6e; }
@@ -299,9 +303,17 @@ td.slot.dragging { opacity: 0.4; }
   <div class="search-bar">
     <input type="text" id="searchInput" placeholder="이름 또는 전화번호 검색..." oninput="filterMembers()">
     <select id="gradeFilter" onchange="filterMembers()">
-      <option value="">전체 등급</option>
-      <option value="VIP">VIP</option><option value="우수">우수</option><option value="일반">일반</option>
-      <option value="__blacklist__">⚠ 블랙리스트만</option>
+      <option value="">전체</option>
+      <optgroup label="🏌️ 스크린">
+        <option value="출자회원">출자회원</option>
+        <option value="타지역">타지역거래자</option>
+        <option value="비회원">비회원</option>
+      </optgroup>
+      <optgroup label="⛳ 파크">
+        <option value="동호회원">동호회원</option>
+        <option value="일반">일반</option>
+      </optgroup>
+      <option value="__blacklist__">⚠ 블랙리스트</option>
     </select>
     <select id="sortFilter" onchange="filterMembers()">
       <option value="name">이름순</option>
@@ -401,20 +413,32 @@ td.slot.dragging { opacity: 0.4; }
 <!-- 회원 추가/수정 모달 -->
 <div class="mmodal-bg" id="memberModalBg">
   <div class="mmodal">
-    <h3 id="memberModalTitle">회원 추가</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h3 id="memberModalTitle" style="margin-bottom:0;">회원 추가</h3>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:700;color:#c0392b;">
+        <input type="checkbox" id="fBlacklist" style="width:16px;height:16px;cursor:pointer;accent-color:#c0392b;">
+        블랙리스트
+      </label>
+    </div>
     <div class="form-row">
       <div class="fg"><label>이름 *</label><input type="text" id="fName" placeholder="홍길동"></div>
       <div class="fg"><label>연락처</label><input type="tel" id="fPhone" placeholder="010-0000-0000"></div>
     </div>
     <div class="form-row">
       <div class="fg"><label>차량번호</label><input type="text" id="fCar" placeholder="12가 3456"></div>
-      <div class="fg"><label>등급</label>
-        <select id="fGrade"><option value="일반">일반</option><option value="우수">우수</option><option value="VIP">VIP</option></select>
+      <div class="fg"><label>분류</label>
+        <select id="fGrade">
+          <optgroup label="🏌️ 스크린골프">
+            <option value="출자회원">출자회원</option>
+            <option value="타지역">타지역거래자</option>
+            <option value="비회원">비회원</option>
+          </optgroup>
+          <optgroup label="⛳ 파크골프">
+            <option value="동호회원">동호회원</option>
+            <option value="일반">일반</option>
+          </optgroup>
+        </select>
       </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px 12px;background:#fff5f5;border-radius:8px;border:1px solid #f5c6c6;">
-      <input type="checkbox" id="fBlacklist" style="width:18px;height:18px;cursor:pointer;accent-color:#c0392b;">
-      <label for="fBlacklist" style="margin:0;font-size:13px;font-weight:700;color:#c0392b;cursor:pointer;">⚠ 블랙리스트 지정 — 예약 시 붉은색으로 표시됩니다</label>
     </div>
     <div class="fg" style="margin-bottom:10px;"><label>메모 추가</label><textarea id="fMemo" rows="2" placeholder="특이사항 등..."></textarea></div>
     <div id="bookingAnalysis"></div>
@@ -937,12 +961,20 @@ function refreshTable(type){
         if(isStart){
           td.style.overflow='visible'; td.style.position='relative'; td.style.zIndex='3';
           const memoLine=b.note?`<span class="slot-memo" style="color:${p.text}">📝 ${b.note}</span>`:'';
-          const blLabel=bl?`<span style="font-size:10px;font-weight:800;color:#c0392b;">⚠ 블랙리스트</span>`:'';
+          // 이름 여러 명 처리 (띄어쓰기 구분)
+          const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
+          const nameLines=names.map(n=>{
+            const nbl=isBlacklisted(n);
+            return `<span class="slot-main" style="color:${nbl?'#c0392b':p.text};${nbl?'text-decoration:underline dotted;':''}">
+              ${nbl?'⚠ ':''}${n}
+            </span>`;
+          }).join('');
+          const blLabel=bl&&names.length<=1?`<span style="font-size:10px;font-weight:800;color:#c0392b;">⚠ 블랙리스트</span>`:'';
           td.innerHTML=`<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};border:1.5px solid ${bl?'rgba(180,0,0,0.5)':'rgba(0,0,0,0.45)'};border-radius:4px;pointer-events:none;">
             ${blLabel}
             <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
-            <span class="slot-main" style="color:${p.text}">${b.name} ${b.people}명</span>
-            <span class="slot-sub" style="color:${p.text}">${b.hole||''}</span>${memoLine}</div>`;
+            ${nameLines}
+            <span class="slot-sub" style="color:${p.text}">${b.people}명 ${b.hole||''}</span>${memoLine}</div>`;
         } else {td.style.overflow='visible';td.style.position='relative';td.innerHTML='';}
       } else {td.className='slot empty';td.style.cssText='';td.innerHTML='';}
     });
@@ -1068,7 +1100,14 @@ let editingMemberId = null;
 let memberNextId = 1;
 
 function daysSince(d){ return Math.floor((new Date()-new Date(d))/86400000); }
-function gc(g){ return g==='VIP'?'b-vip':g==='우수'?'b-good':'b-normal'; }
+function gc(g){
+  if(g==='출자회원') return 'b-screen';
+  if(g==='타지역') return 'b-regional';
+  if(g==='비회원') return 'b-nonmember';
+  if(g==='동호회원') return 'b-park';
+  if(g==='일반') return 'b-normal';
+  return 'b-normal';
+}
 function dotC(d){ const n=daysSince(d); return n<=7?'dot-r':n<=30?'dot-m':'dot-o'; }
 
 function analyzeBookings(name){
