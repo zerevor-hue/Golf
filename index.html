@@ -204,6 +204,23 @@ td.slot.dragging { opacity: 0.4; }
 }
 .grade-check-label:has(input:checked) { background: #f0f6ff; }
 .grade-check-label input { width: 14px; height: 14px; cursor: pointer; }
+.companion-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; background: #f0f6ff; border: 1px solid #c0d8f0;
+  border-radius: 20px; font-size: 12px; font-weight: 700; color: #2563a8;
+}
+.companion-tag button {
+  background: none; border: none; cursor: pointer; color: #888;
+  font-size: 14px; line-height: 1; padding: 0; font-weight: 700;
+}
+.companion-tag button:hover { color: #c0392b; }
+.companion-drop-item {
+  padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border-bottom: 0.5px solid var(--border);
+}
+.companion-drop-item:last-child { border-bottom: none; }
+.companion-drop-item:hover { background: #f7f7f4; }
+.companion-drop-item .drop-sub { font-size: 11px; color: var(--muted); font-weight: 500; }
 .b-screen { background: #daeeff; color: #1a4a6e; }
 .b-park { background: #c8edcc; color: #1a4d22; }
 .b-both { background: #e8e1f5; color: #4b2b6b; }
@@ -446,6 +463,17 @@ td.slot.dragging { opacity: 0.4; }
         <label class="grade-check-label" style="border-color:#1a7a4a;"><input type="checkbox" class="fGrades" value="동호회원"><span style="color:#1a7a4a;">⛳ 동호회원</span></label>
         <label class="grade-check-label" style="border-color:#aaa;"><input type="checkbox" class="fGrades" value="일반"><span style="color:#777;">🙂 일반</span></label>
       </div>
+    </div>
+    <!-- 일행 연결 -->
+    <div style="margin-bottom:10px;">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">👥 자주 함께 오는 분</label>
+      <div style="position:relative;">
+        <input type="text" id="companionSearch" placeholder="이름으로 검색..." autocomplete="off"
+          style="width:100%;padding:9px 10px;border:1px solid var(--border-md);border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;"
+          oninput="searchCompanion(this.value)">
+        <div id="companionDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border-md);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:300;max-height:160px;overflow-y:auto;margin-top:3px;"></div>
+      </div>
+      <div id="companionList" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;"></div>
     </div>
     <div class="fg" style="margin-bottom:10px;"><label>메모 추가</label><textarea id="fMemo" rows="2" placeholder="특이사항 등..."></textarea></div>
     <div id="bookingAnalysis"></div>
@@ -1267,9 +1295,12 @@ function showTip(e,m){
   const ls=d===0?'오늘':d===1?'어제':`${d}일 전`;
   let aHTML='';
   if(a){const types=[];if(a.sc>0)types.push(`스크린 ${a.sc}회`);if(a.pk>0)types.push(`파크 ${a.pk}회`);aHTML=`<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.15);font-size:11px;opacity:0.9;"><div>⛳ ${types.join(' / ')}</div><div>${a.weCnt>=a.wdCnt?'📅 주말 선호':'📅 평일 선호'} · ${a.topTime[0]}</div></div>`;}
+  const companions=(m.companions||[]).map(cid=>membersDB[cid]?.name).filter(Boolean);
+  const companionHTML=companions.length?`<div style="margin-top:4px;font-size:11px;">👥 ${companions.join(', ')}</div>`:'';
   t.innerHTML=`<div class="t-name">${m.name} ${gradesBadges(m)}</div>
     <div>📞 ${m.phone||'-'}</div><div>🚗 ${m.car||'-'}</div>
-    <div>🕐 마지막 방문: ${ls}</div><div>📊 예약 이력: ${m._visits||0}회</div>${aHTML}
+    <div>🕐 마지막 방문: ${ls}</div><div>📊 예약 이력: ${m._visits||0}회</div>
+    ${companionHTML}${aHTML}
     ${m.memos&&m.memos.length?`<div style="margin-top:4px;opacity:0.7;font-size:11px;">📝 ${m.memos[m.memos.length-1].text}</div>`:''}`;
   t.style.display='block'; moveTip(e);
 }
@@ -1290,6 +1321,10 @@ function openAddMemberModal(){
   document.getElementById('existingMemos').style.display='none';
   document.getElementById('bookingAnalysis').innerHTML='';
   document.getElementById('btnDelMember').style.display='none';
+  document.getElementById('companionSearch').value='';
+  document.getElementById('companionDropdown').style.display='none';
+  currentCompanions=[];
+  renderCompanionList();
   document.getElementById('memberModalBg').classList.add('open');
 }
 function openEditMemberModal(id){
@@ -1305,6 +1340,11 @@ function openEditMemberModal(id){
   document.getElementById('fMemo').value='';
   document.getElementById('btnDelMember').style.display='block';
   document.getElementById('bookingAnalysis').innerHTML=analysisBoxHTML(m.name);
+  // 일행 로드
+  document.getElementById('companionSearch').value='';
+  document.getElementById('companionDropdown').style.display='none';
+  currentCompanions=[...(m.companions||[])];
+  renderCompanionList();
   const mw=document.getElementById('existingMemos');
   if(m.memos&&m.memos.length){
     mw.style.display='block';
@@ -1314,6 +1354,76 @@ function openEditMemberModal(id){
   document.getElementById('memberModalBg').classList.add('open');
 }
 function closeMemberModal(){document.getElementById('memberModalBg').classList.remove('open');}
+
+// ── 일행 관리 ──
+let currentCompanions = []; // 현재 모달에서 편집 중인 일행 id 배열
+
+function renderCompanionList(){
+  const el=document.getElementById('companionList');
+  el.innerHTML='';
+  currentCompanions.forEach(cid=>{
+    const cm=membersDB[cid]; if(!cm) return;
+    const tag=document.createElement('div'); tag.className='companion-tag';
+    tag.innerHTML=`<span>${cm.name}</span><button onclick="removeCompanion('${cid}')">×</button>`;
+    el.appendChild(tag);
+  });
+}
+
+function searchCompanion(q){
+  const dd=document.getElementById('companionDropdown');
+  if(!q.trim()){dd.style.display='none';return;}
+  const results=Object.values(membersDB).filter(m=>
+    m.id!==editingMemberId &&
+    !currentCompanions.includes(m.id) &&
+    m.name.includes(q.trim())
+  ).slice(0,8);
+  if(!results.length){dd.style.display='none';return;}
+  dd.innerHTML=results.map(m=>`
+    <div class="companion-drop-item" onclick="addCompanion('${m.id}')">
+      ${m.name}
+      <span class="drop-sub">${m.phone||''} ${(Array.isArray(m.grades)?m.grades:m.grade?[m.grade]:[]).join('·')}</span>
+    </div>`).join('');
+  dd.style.display='block';
+}
+
+function addCompanion(cid){
+  if(!currentCompanions.includes(cid)) currentCompanions.push(cid);
+  document.getElementById('companionSearch').value='';
+  document.getElementById('companionDropdown').style.display='none';
+  renderCompanionList();
+}
+
+function removeCompanion(cid){
+  currentCompanions=currentCompanions.filter(id=>id!==cid);
+  renderCompanionList();
+}
+
+// 일행 저장 — 양방향 연결
+function saveCompanions(myId){
+  const myOldCompanions=(membersDB[myId]?.companions||[]);
+  // 제거된 일행에서 나를 빼기
+  myOldCompanions.forEach(cid=>{
+    if(!currentCompanions.includes(cid)&&membersDB[cid]){
+      membersDB[cid].companions=(membersDB[cid].companions||[]).filter(id=>id!==myId);
+      if(window.fbSaveMember) window.fbSaveMember(cid,membersDB[cid]);
+    }
+  });
+  // 새 일행에 나를 추가
+  currentCompanions.forEach(cid=>{
+    if(membersDB[cid]){
+      if(!membersDB[cid].companions) membersDB[cid].companions=[];
+      if(!membersDB[cid].companions.includes(myId)) membersDB[cid].companions.push(myId);
+      if(window.fbSaveMember) window.fbSaveMember(cid,membersDB[cid]);
+    }
+  });
+  membersDB[myId].companions=[...currentCompanions];
+}
+
+// 드롭다운 외부 클릭 시 닫기
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#companionSearch')&&!e.target.closest('#companionDropdown'))
+    document.getElementById('companionDropdown').style.display='none';
+});
 
 function saveMember(){
   const name=document.getElementById('fName').value.trim();
@@ -1326,14 +1436,17 @@ function saveMember(){
     const m=membersDB[editingMemberId];
     m.name=name; m.phone=document.getElementById('fPhone').value.trim();
     m.car=document.getElementById('fCar').value.trim();
-    m.grades=grades; m.grade=grades[0]||''; // 하위호환
+    m.grades=grades; m.grade=grades[0]||'';
     m.blacklist=blacklist;
     if(memo){if(!m.memos)m.memos=[];m.memos.push({date:today,text:memo});}
+    saveCompanions(editingMemberId);
     if(window.fbSaveMember) window.fbSaveMember(editingMemberId,m);
   } else {
     const id='m_'+Date.now();
-    const newMember={id,name,phone:document.getElementById('fPhone').value.trim(),car:document.getElementById('fCar').value.trim(),grades,grade:grades[0]||'',blacklist,joinDate:today,memos:memo?[{date:today,text:memo}]:[]};
+    const newMember={id,name,phone:document.getElementById('fPhone').value.trim(),car:document.getElementById('fCar').value.trim(),grades,grade:grades[0]||'',blacklist,joinDate:today,companions:[],memos:memo?[{date:today,text:memo}]:[]};
     membersDB[id]=newMember;
+    editingMemberId=id;
+    saveCompanions(id);
     if(window.fbSaveMember) window.fbSaveMember(id,newMember);
   }
   closeMemberModal(); filterMembers();
