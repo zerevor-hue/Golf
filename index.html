@@ -170,7 +170,7 @@ td.slot.dragging { opacity: 0.4; }
 /* 현재 시간 표시줄 */
 .now-line {
   position: absolute;
-  left: 0;
+  left: 62px; /* 시간 라벨 칸 너비만큼 띄움 */
   right: 0;
   height: 0;
   border-top: 2px solid #e74c3c;
@@ -181,7 +181,7 @@ td.slot.dragging { opacity: 0.4; }
 }
 .now-line .now-label {
   position: absolute;
-  left: 4px;
+  left: -36px; /* 시간 라벨 칸 안에 들어가도록 왼쪽으로 */
   top: -10px;
   background: #e74c3c;
   color: #fff;
@@ -379,6 +379,8 @@ td.slot.dragging { opacity: 0.4; }
   .stat-cards { grid-template-columns: repeat(2,1fr); }
   .ds-columns { grid-template-columns: 1fr; gap: 12px; }
   .ds-kpi-num { font-size: 20px; }
+  .now-line { left: 48px; }
+  .now-line .now-label { left: -32px; }
 }
 </style>
 </head>
@@ -1141,7 +1143,6 @@ function buildBoard(cfg){
     if(isHour||isHalf){lbl.style.fontWeight='800';lbl.style.fontSize='12px';lbl.style.color='#222';}
     else{lbl.style.fontWeight='500';lbl.style.fontSize='10px';lbl.style.color='#999';}
     // border는 tr 대신 td에 적용 (slot-content overlay에 가려지지 않도록)
-    if(isHour) lbl.style.borderTop='2px solid rgba(0,0,0,0.32)';
     if(isHalf) lbl.style.borderTop='1px solid rgba(0,0,0,0.08)';
     row.appendChild(lbl);
     cfg.bays.forEach((bay,bayIdx)=>{
@@ -1150,12 +1151,10 @@ function buildBoard(cfg){
         td.className='slot empty';
         td.dataset.type=cfg.type; td.dataset.bay=bayIdx; td.dataset.time=time; td.dataset.bayName=bay;
         // td에도 동일 border — slot-content는 absolute이므로 td border는 그 위에 표시됨
-        if(isHour) td.style.borderTop='2px solid rgba(0,0,0,0.32)';
         if(isHalf) td.style.borderTop='1px solid rgba(0,0,0,0.08)';
         attachSlotEvents(td,cfg.type,bayIdx,time,bay);
       } else {
         td.className='slot empty'; td.style.cursor='default'; td.style.background='#fafafa';
-        if(isHour) td.style.borderTop='2px solid rgba(0,0,0,0.32)';
       }
       row.appendChild(td);
     });
@@ -1188,11 +1187,12 @@ function attachSlotEvents(td,type,bayIdx,time,bayName){
     if(found) startDragTouch(e,type,found.key,found.b,td);
     else startSelectDragTouch(e,type,bayIdx,time);
   },{passive:false});
-  // 예약된 셀 마우스오버 시 회원 정보 툴팁
+  // 예약된 셀 마우스오버 시 회원 정보 툴팁 / 빈 셀은 시간 툴팁
   td.addEventListener('mouseenter',e=>{
     if(drag||selectDrag) return;
     const found=getAt(type,boardState[type].date,bayIdx,time);
     if(found) showTipForBooking(e,found.b);
+    else showTipForEmpty(e,time);
   });
   td.addEventListener('mousemove',e=>{
     if(!drag&&!selectDrag){
@@ -1204,6 +1204,14 @@ function attachSlotEvents(td,type,bayIdx,time,bayName){
 }
 
 // 예약 툴팁 — 예약자 이름(여러 명 가능) → 회원DB 대조
+// 빈 셀 마우스오버 — 시간만 짤막하게 표시
+function showTipForEmpty(e,time){
+  const t=document.getElementById('tooltip');
+  t.innerHTML=`<div style="font-size:14px;font-weight:800;text-align:center;padding:0 4px;">${time}</div>`;
+  t.style.display='block';
+  moveTip(e);
+}
+
 function showTipForBooking(e,b){
   const t=document.getElementById('tooltip');
   const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
@@ -1425,7 +1433,9 @@ function refreshTable(type){
         if(bl) b.palette=p;
         // 기존 border-top 보존 (정각/30분 구분선)
         const prevBorderTop=td.style.borderTop;
-        td.className='slot booked'; td.style.background=p.bg; td.style.borderColor='rgba(0,0,0,0.08)';
+        td.className='slot booked';
+        td.style.background='transparent'; // td 배경 제거 — overlay만 사용
+        td.style.borderColor='rgba(0,0,0,0.08)';
         if(prevBorderTop) td.style.borderTop=prevBorderTop;
         const isStart=(time===b.start),duration=si(b.end)-si(b.start),totalHeight=duration*22;
         if(isStart){
