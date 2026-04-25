@@ -724,9 +724,9 @@ window.forceReload = function() {
   location.reload();
 };
 
-// 좀비 예약 정리 — 모든 예약을 다시 정상 형식으로 저장
+// 좀비 예약 정리 — Firebase 전체 데이터를 검증하고 정상화
 window.cleanupZombies = async function() {
-  if(!confirm('Firebase의 모든 예약 데이터를 점검하고 정리합니다.\n잠시 후 자동으로 새로고침됩니다.\n\n계속하시겠습니까?')) return;
+  if(!confirm('Firebase의 모든 예약 데이터를 점검하고 정리합니다.\n\n• 필수 정보 누락된 예약 자동 삭제\n• 키 불일치 예약 정상화\n• 표시 안 되는 좀비 예약 제거\n\n잠시 후 자동으로 새로고침됩니다.\n\n계속하시겠습니까?')) return;
 
   const statusEl=document.getElementById('syncStatus');
   statusEl.textContent='🔧 점검 중...';
@@ -734,6 +734,9 @@ window.cleanupZombies = async function() {
 
   try {
     let fixedCount=0, deletedCount=0;
+    const detailLog=[];
+
+    // 한 번만 데이터 스냅샷
     const snap = await new Promise((resolve,reject)=>{
       onValue(ref(db,'bookings'), s=>resolve(s),reject,{onlyOnce:true});
     });
@@ -741,48 +744,71 @@ window.cleanupZombies = async function() {
 
     for(const type of ['screen','park']){
       if(!data[type]) continue;
+      const validBookings={}; // 유효한 데이터만 모아서 type별로 통째로 다시 저장
+
       for(const [fbKey,val] of Object.entries(data[type])){
+        // 1. null이거나 객체 아님 → 삭제 대상
         if(!val || typeof val!=='object'){
-          // 잘못된 데이터 — 삭제
-          await remove(ref(db,`bookings/${type}/${fbKey}`));
           deletedCount++;
+          detailLog.push(`삭제(잘못된 데이터): ${type}/${fbKey}`);
           continue;
         }
-        // 필수 필드 검증
-        if(!val.date||!val.start||!val.end||val.bayIdx===undefined){
-          await remove(ref(db,`bookings/${type}/${fbKey}`));
+        // 2. 필수 필드 누락 → 삭제 대상
+        if(!val.date||!val.start||!val.end||val.bayIdx===undefined||val.bayIdx===null||!val.name){
           deletedCount++;
+          detailLog.push(`삭제(필드 누락): ${type}/${fbKey} (date:${val.date}, name:${val.name})`);
           continue;
         }
-        // _key 없으면 추가, bayIdx 숫자 변환
-        if(!val._key||typeof val.bayIdx==='string'){
-          const properKey=val._key||fbKey.replace(/--/g,'__');
-          val._key=properKey;
-          if(typeof val.bayIdx==='string') val.bayIdx=parseInt(val.bayIdx)||0;
-          // 기존 키와 정상 키가 다르면 이동
-          const properFbKey=properKey.replace(/\./g,'_').replace(/__/g,'--');
-          if(properFbKey!==fbKey){
-            await remove(ref(db,`bookings/${type}/${fbKey}`));
-            await set(ref(db,`bookings/${type}/${properFbKey}`),val);
-          } else {
-            await set(ref(db,`bookings/${type}/${fbKey}`),val);
-          }
+        // 3. 정상화: bayIdx 숫자 변환, _key 보장
+        const cleanData={
+          date: String(val.date),
+          start: String(val.start),
+          end: String(val.end),
+          bayIdx: parseInt(val.bayIdx)||0,
+          name: String(val.name||'').trim(),
+          phone: String(val.phone||''),
+          people: String(val.people||'1'),
+          hole: String(val.hole||''),
+          manager: String(val.manager||''),
+          note: String(val.note||''),
+          palette: val.palette||null,
+        };
+        // 정상 키 생성
+        const properKey=`${cleanData.date}__${cleanData.bayIdx}__${cleanData.start}`;
+        const properFbKey=properKey.replace(/\./g,'_').replace(/__/g,'--');
+        cleanData._key=properKey;
+
+        // 충돌 검사 — 같은 properFbKey가 이미 있으면 중복
+        if(validBookings[properFbKey]){
+          deletedCount++;
+          detailLog.push(`삭제(중복): ${type}/${fbKey} = ${properFbKey}`);
+          continue;
+        }
+        validBookings[properFbKey]=cleanData;
+
+        if(properFbKey!==fbKey || !val._key || typeof val.bayIdx!=='number'){
           fixedCount++;
+          detailLog.push(`수정: ${type}/${fbKey} → ${properFbKey} (${cleanData.name})`);
         }
       }
+
+      // 해당 type 전체를 통째로 재작성 (atomic)
+      await set(ref(db,`bookings/${type}`), validBookings);
     }
 
     statusEl.textContent=`✓ 점검 완료 (수정 ${fixedCount}, 삭제 ${deletedCount})`;
     statusEl.style.color='#1a7a4a';
+    console.log('=== 데이터 점검 상세 ===');
+    detailLog.forEach(l=>console.log(l));
     setTimeout(()=>{
-      alert(`데이터 점검 완료!\n\n수정된 예약: ${fixedCount}건\n잘못된 데이터 삭제: ${deletedCount}건\n\n페이지를 새로고침합니다.`);
+      alert(`데이터 점검 완료!\n\n수정된 예약: ${fixedCount}건\n삭제된 좀비/오류 데이터: ${deletedCount}건\n\n자세한 내용은 콘솔(F12)에서 확인 가능합니다.\n\n페이지를 새로고침합니다.`);
       location.reload();
-    }, 500);
+    }, 800);
   } catch(e){
-    console.error(e);
+    console.error('점검 오류:', e);
     statusEl.textContent='⚠ 점검 실패';
     statusEl.style.color='#c0392b';
-    alert('점검 중 오류가 발생했습니다.\n네트워크 상태를 확인해주세요.');
+    alert('점검 중 오류가 발생했습니다.\n\n' + (e.message||'') + '\n\n네트워크 상태를 확인해주세요.');
   }
 };
 
@@ -1636,7 +1662,19 @@ document.getElementById('mStart').addEventListener('change',()=>{
   if(modalState) modalState.lastStart=newStart;
   updateEndOpts();
 });
-// 인원 변경 시 — 종료시간 자동 변경하지 않음 (사용자가 원하면 직접 수정)
+// 인원 변경 시 — 자동 모드면 종료시간 재계산
+document.getElementById('mPeople').addEventListener('change',()=>{
+  if(!modalState || !modalState.autoEnd) return; // 사용자가 종료시간 수동 변경했으면 자동 갱신 X
+  const {type}=modalState;
+  const start=document.getElementById('mStart').value;
+  const people=document.getElementById('mPeople').value;
+  document.getElementById('mEnd').value=calcDefaultEndTime(type,people,start);
+  updateEndOpts();
+});
+// 종료시간을 사용자가 직접 변경하면 → 자동 모드 해제
+document.getElementById('mEnd').addEventListener('change',()=>{
+  if(modalState) modalState.autoEnd=false;
+});
 // 방/날짜 변경 시 — 충돌 음영처리 갱신
 document.getElementById('mBay').addEventListener('change',updateEndOpts);
 document.getElementById('mDate').addEventListener('change',updateEndOpts);
@@ -1645,7 +1683,8 @@ function openModal(type,bayIdx,time,bayName){
   const found=getAt(type,boardState[type].date,bayIdx,time);
   const b=found?found.b:null;
   const cfg=BOARDS.find(c=>c.type===type);
-  modalState={type,editKey:found?found.key:null,lastStart:b?b.start:time};
+  // autoEnd: 새 예약일 때만 true (수정은 기존 시간 유지)
+  modalState={type,editKey:found?found.key:null,lastStart:b?b.start:time,autoEnd:!b};
   document.getElementById('mTitle').textContent=b?'예약 수정':'예약 입력';
   document.getElementById('mBayLabel').textContent=type==='park'?'타석':'방';
   document.getElementById('mDate').value=b?b.date:boardState[type].date;
@@ -1674,7 +1713,8 @@ function openModal(type,bayIdx,time,bayName){
 }
 function openModalForNew(type,bayIdx,start,end){
   const cfg=BOARDS.find(c=>c.type===type);
-  modalState={type,editKey:null,lastStart:start};
+  // autoEnd: false — 사용자가 드래그로 직접 범위 지정한 거라 자동 변경 X
+  modalState={type,editKey:null,lastStart:start,autoEnd:false};
   document.getElementById('mTitle').textContent='예약 입력';
   document.getElementById('mBayLabel').textContent=type==='park'?'타석':'방';
   document.getElementById('mDate').value=boardState[type].date;
