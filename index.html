@@ -167,23 +167,26 @@ td.slot.dragging { opacity: 0.4; }
 .mbtn.del:hover { background: #fff5f5; }
 .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; background: rgba(255,255,255,0.95); border: 2px solid #333; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #1a1a1a; box-shadow: 0 4px 16px rgba(0,0,0,0.2); white-space: nowrap; display: none; }
 
-/* 현재 시간 표시줄 */
+/* 현재 시간 표시줄 — 자홍색 점선 (여유있는 간격) */
 .now-line {
   position: absolute;
   left: 62px; /* 시간 라벨 칸 너비만큼 띄움 */
   right: 0;
-  height: 0;
-  border-top: 2px solid #e74c3c;
+  height: 2px;
+  background-image: linear-gradient(to right, #b83280 60%, transparent 0%);
+  background-position: top;
+  background-size: 12px 2px;
+  background-repeat: repeat-x;
   z-index: 5;
   pointer-events: none;
   display: none;
-  box-shadow: 0 0 0 1px rgba(231,76,60,0.15);
+  border: none;
 }
 .now-line .now-label {
   position: absolute;
   left: -36px; /* 시간 라벨 칸 안에 들어가도록 왼쪽으로 */
-  top: -10px;
-  background: #e74c3c;
+  top: -9px;
+  background: #b83280;
   color: #fff;
   font-size: 9px;
   font-weight: 800;
@@ -558,12 +561,24 @@ td.slot.dragging { opacity: 0.4; }
       <input type="text" id="mName" placeholder="이름" style="flex:1;min-width:0;"/>
       <input type="tel" id="mPhone" placeholder="연락처" style="flex:1.4;min-width:0;"/>
     </div>
-    <label>인원</label>
-    <select id="mPeople">
-      <option value="1">1명</option><option value="2" selected>2명</option><option value="3">3명</option>
-      <option value="4">4명</option><option value="5">5명</option><option value="6">6명</option>
-      <option value="7">7명</option><option value="8">8명</option>
-    </select>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;">
+        <label>인원</label>
+        <select id="mPeople">
+          <option value="1">1명</option><option value="2" selected>2명</option><option value="3">3명</option>
+          <option value="4">4명</option><option value="5">5명</option><option value="6">6명</option>
+          <option value="7">7명</option><option value="8">8명</option>
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label>게임 수</label>
+        <select id="mGames">
+          <option value="1" selected>1게임</option><option value="2">2게임</option>
+          <option value="3">3게임</option><option value="4">4게임</option>
+          <option value="5">5게임</option>
+        </select>
+      </div>
+    </div>
     <label>홀 단위</label>
     <select id="mHole">
       <option value="9홀">9홀</option><option value="18홀" selected>18홀</option>
@@ -796,6 +811,7 @@ window.cleanupZombies = async function() {
           name: String(val.name||'').trim(),
           phone: String(val.phone||''),
           people: String(val.people||'1'),
+          games: String(val.games||'1'),
           hole: String(val.hole||''),
           manager: String(val.manager||''),
           note: String(val.note||''),
@@ -1219,7 +1235,7 @@ function showTipForBooking(e,b){
 
   // 예약 기본 정보
   let html=`<div class="t-name">📅 ${b.start} ~ ${b.end}</div>
-    <div style="font-size:11px;opacity:0.85;margin-bottom:6px;">${b.people}명 · ${b.hole||''}${b.manager?' · 담당 '+b.manager:''}</div>`;
+    <div style="font-size:11px;opacity:0.85;margin-bottom:6px;">${b.people}명 · ${parseInt(b.games||1)>1?(b.games+'게임 · '):''}${b.hole||''}${b.manager?' · 담당 '+b.manager:''}</div>`;
   if(b.note) html+=`<div style="font-size:11px;opacity:0.75;margin-bottom:6px;">📝 ${b.note}</div>`;
 
   // 각 예약자 회원 정보
@@ -1460,7 +1476,7 @@ function refreshTable(type){
             ${blLabel}
             <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
             ${nameLines}
-            <span class="slot-sub" style="color:${p.text}">${b.people}명 ${holeSpan}</span>${memoLine}</div>`;
+            <span class="slot-sub" style="color:${p.text}">${b.people}명 ${parseInt(b.games||1)>1?(b.games+'게임 '):''}${holeSpan}</span>${memoLine}</div>`;
         } else {td.style.overflow='visible';td.style.position='relative';td.innerHTML='';}
       } else {td.className='slot empty';td.style.cssText='';td.innerHTML='';}
     });
@@ -1719,14 +1735,16 @@ function updateEndOpts(){
 }
 
 // 자동 종료시간 계산 (분 단위) — 모달 처음 열 때의 기본값으로만 사용
-// 스크린골프: 인원수 × 60 + 30
-// 파크골프: 인원수 × 30 + 10
-function calcDurationMinutes(type,people){
+// 스크린골프: (인원수 × 60 + 30) × 게임수
+// 파크골프: (인원수 × 30 + 10) × 게임수
+function calcDurationMinutes(type,people,games){
   const p=parseInt(people)||1;
-  return type==='park' ? p*30+10 : p*60+30;
+  const g=parseInt(games)||1;
+  const onePerMin=type==='park' ? p*30+10 : p*60+30;
+  return onePerMin*g;
 }
-function calcDefaultEndTime(type,people,startTime){
-  const minutes=calcDurationMinutes(type,people);
+function calcDefaultEndTime(type,people,games,startTime){
+  const minutes=calcDurationMinutes(type,people,games);
   const slotsToAdd=Math.ceil(minutes/10);
   const startIdx=si(startTime);
   const endIdx=Math.min(startIdx+slotsToAdd,slots.length-1);
@@ -1746,15 +1764,18 @@ document.getElementById('mStart').addEventListener('change',()=>{
   if(modalState) modalState.lastStart=newStart;
   updateEndOpts();
 });
-// 인원 변경 시 — 자동 모드면 종료시간 재계산
-document.getElementById('mPeople').addEventListener('change',()=>{
-  if(!modalState || !modalState.autoEnd) return; // 사용자가 종료시간 수동 변경했으면 자동 갱신 X
+// 인원/게임 변경 시 — 자동 모드면 종료시간 재계산
+function autoRecalcEnd(){
+  if(!modalState || !modalState.autoEnd) return;
   const {type}=modalState;
   const start=document.getElementById('mStart').value;
   const people=document.getElementById('mPeople').value;
-  document.getElementById('mEnd').value=calcDefaultEndTime(type,people,start);
+  const games=document.getElementById('mGames').value;
+  document.getElementById('mEnd').value=calcDefaultEndTime(type,people,games,start);
   updateEndOpts();
-});
+}
+document.getElementById('mPeople').addEventListener('change',autoRecalcEnd);
+document.getElementById('mGames').addEventListener('change',autoRecalcEnd);
 // 종료시간을 사용자가 직접 변경하면 → 자동 모드 해제
 document.getElementById('mEnd').addEventListener('change',()=>{
   if(modalState) modalState.autoEnd=false;
@@ -1779,14 +1800,14 @@ function openModal(type,bayIdx,time,bayName){
   populateTimeSelects(b?b.start:time);
   if(b){document.getElementById('mEnd').value=b.end;}
   else{
-    // 새 예약 — 기본값으로 자동 계산된 종료시간 (기본 2명 기준)
-    // 사용자가 이후 자유롭게 수정 가능
-    document.getElementById('mEnd').value=calcDefaultEndTime(type,2,time);
+    // 새 예약 — 기본값으로 자동 계산된 종료시간 (기본 2명 1게임)
+    document.getElementById('mEnd').value=calcDefaultEndTime(type,2,1,time);
   }
   updateEndOpts();
   document.getElementById('mName').value=b?b.name:'';
   document.getElementById('mPhone').value=b?(b.phone||''):'';
   document.getElementById('mPeople').value=b?b.people:'2';
+  document.getElementById('mGames').value=b?(b.games||'1'):'1';
   document.getElementById('mHole').value=b?(b.hole||'18홀'):'18홀';
   document.getElementById('mNote').value=b?(b.note||''):'';
   rebuildManagerSelect(b?(b.manager||''):getSavedManager());
@@ -1809,7 +1830,10 @@ function openModalForNew(type,bayIdx,start,end){
   populateTimeSelects(start);
   document.getElementById('mEnd').value=end; updateEndOpts();
   document.getElementById('mName').value=''; document.getElementById('mPhone').value='';
-  document.getElementById('mPeople').value='2'; document.getElementById('mHole').value='18홀'; document.getElementById('mNote').value='';
+  document.getElementById('mPeople').value='2';
+  document.getElementById('mGames').value='1';
+  document.getElementById('mHole').value='18홀';
+  document.getElementById('mNote').value='';
   rebuildManagerSelect(getSavedManager());
   document.getElementById('mManagerCustomWrap').style.display='none';
   document.getElementById('mDelete').style.display='none';
@@ -1854,7 +1878,7 @@ document.getElementById('mSave').addEventListener('click',()=>{
   if(manager){addToManagerList(manager);saveManager(manager);}
   const palette=(editKey&&bookingsDB[type][editKey])?bookingsDB[type][editKey].palette:nextPalette(type,name);
   const nk=bKey(date,bayIdx,start);
-  const nd={date,bayIdx,start,end,name,phone,people:document.getElementById('mPeople').value,hole,manager,note:document.getElementById('mNote').value.trim(),palette};
+  const nd={date,bayIdx,start,end,name,phone,people:document.getElementById('mPeople').value,games:document.getElementById('mGames').value,hole,manager,note:document.getElementById('mNote').value.trim(),palette};
   if(editKey && editKey !== nk){
     // 키가 바뀌는 경우 — atomic move (race condition 방지)
     delete bookingsDB[type][editKey];
