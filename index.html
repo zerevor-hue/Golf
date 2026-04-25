@@ -369,7 +369,10 @@ td.slot.dragging { opacity: 0.4; }
 <div class="page active" id="page-reservation">
   <div class="page-header">
     <span class="page-title">예약 관리 시스템 <span id="syncStatus">연결 중...</span></span>
-    <button onclick="forceReload()" style="padding:6px 12px;font-size:12px;font-weight:700;background:#fff;border:0.5px solid var(--border-md);border-radius:6px;cursor:pointer;font-family:inherit;" title="문제가 있을 때 클릭하면 서버에서 최신 데이터를 다시 불러옵니다">🔄 새로고침</button>
+    <div style="display:flex;gap:6px;">
+      <button onclick="cleanupZombies()" style="padding:6px 12px;font-size:12px;font-weight:700;background:#fff;border:0.5px solid var(--border-md);border-radius:6px;cursor:pointer;font-family:inherit;color:#7a5c00;" title="삭제되지 않는 좀비 예약을 강제로 찾아서 정리합니다">🔧 데이터 점검</button>
+      <button onclick="forceReload()" style="padding:6px 12px;font-size:12px;font-weight:700;background:#fff;border:0.5px solid var(--border-md);border-radius:6px;cursor:pointer;font-family:inherit;" title="문제가 있을 때 클릭하면 서버에서 최신 데이터를 다시 불러옵니다">🔄 새로고침</button>
+    </div>
   </div>
   <div class="boards">
     <div class="board screen" id="boardScreen"></div>
@@ -721,6 +724,68 @@ window.forceReload = function() {
   location.reload();
 };
 
+// 좀비 예약 정리 — 모든 예약을 다시 정상 형식으로 저장
+window.cleanupZombies = async function() {
+  if(!confirm('Firebase의 모든 예약 데이터를 점검하고 정리합니다.\n잠시 후 자동으로 새로고침됩니다.\n\n계속하시겠습니까?')) return;
+
+  const statusEl=document.getElementById('syncStatus');
+  statusEl.textContent='🔧 점검 중...';
+  statusEl.style.color='#7a5c00';
+
+  try {
+    let fixedCount=0, deletedCount=0;
+    const snap = await new Promise((resolve,reject)=>{
+      onValue(ref(db,'bookings'), s=>resolve(s),reject,{onlyOnce:true});
+    });
+    const data=snap.val()||{};
+
+    for(const type of ['screen','park']){
+      if(!data[type]) continue;
+      for(const [fbKey,val] of Object.entries(data[type])){
+        if(!val || typeof val!=='object'){
+          // 잘못된 데이터 — 삭제
+          await remove(ref(db,`bookings/${type}/${fbKey}`));
+          deletedCount++;
+          continue;
+        }
+        // 필수 필드 검증
+        if(!val.date||!val.start||!val.end||val.bayIdx===undefined){
+          await remove(ref(db,`bookings/${type}/${fbKey}`));
+          deletedCount++;
+          continue;
+        }
+        // _key 없으면 추가, bayIdx 숫자 변환
+        if(!val._key||typeof val.bayIdx==='string'){
+          const properKey=val._key||fbKey.replace(/--/g,'__');
+          val._key=properKey;
+          if(typeof val.bayIdx==='string') val.bayIdx=parseInt(val.bayIdx)||0;
+          // 기존 키와 정상 키가 다르면 이동
+          const properFbKey=properKey.replace(/\./g,'_').replace(/__/g,'--');
+          if(properFbKey!==fbKey){
+            await remove(ref(db,`bookings/${type}/${fbKey}`));
+            await set(ref(db,`bookings/${type}/${properFbKey}`),val);
+          } else {
+            await set(ref(db,`bookings/${type}/${fbKey}`),val);
+          }
+          fixedCount++;
+        }
+      }
+    }
+
+    statusEl.textContent=`✓ 점검 완료 (수정 ${fixedCount}, 삭제 ${deletedCount})`;
+    statusEl.style.color='#1a7a4a';
+    setTimeout(()=>{
+      alert(`데이터 점검 완료!\n\n수정된 예약: ${fixedCount}건\n잘못된 데이터 삭제: ${deletedCount}건\n\n페이지를 새로고침합니다.`);
+      location.reload();
+    }, 500);
+  } catch(e){
+    console.error(e);
+    statusEl.textContent='⚠ 점검 실패';
+    statusEl.style.color='#c0392b';
+    alert('점검 중 오류가 발생했습니다.\n네트워크 상태를 확인해주세요.');
+  }
+};
+
 let fbInitialized = false;
 
 // 예약 실시간 수신
@@ -730,11 +795,22 @@ onValue(ref(db, 'bookings'), snapshot => {
   if (data) {
     ['screen','park'].forEach(type => {
       if (!data[type]) return;
-      Object.values(data[type]).forEach(val => {
-        if (val && val._key) {
-          const { _key, ...rest } = val;
-          newDB[type][_key] = rest;
+      Object.entries(data[type]).forEach(([fbKey, val]) => {
+        if (!val) return;
+        // _key가 있으면 그걸 사용, 없으면 Firebase 키를 역변환해서 복원
+        let originalKey = val._key;
+        if (!originalKey) {
+          // Firebase 키를 역변환 (-- → __, _ → .)
+          // 단, 시간 콜론(:)은 보존 — 변환 시 :가 _가 되지 않음
+          originalKey = fbKey.replace(/--/g, '__');
+          console.warn('[좀비 복구] _key 없는 예약:', fbKey, '→', originalKey);
+          // 자동으로 _key 추가해서 저장 (다음번엔 정상 인식)
+          val._key = originalKey;
         }
+        // bayIdx가 문자열이면 숫자로 변환 (Firebase 직렬화 문제 방지)
+        if (typeof val.bayIdx === 'string') val.bayIdx = parseInt(val.bayIdx) || 0;
+        const { _key, ...rest } = val;
+        newDB[type][originalKey] = rest;
       });
     });
   }
@@ -1452,49 +1528,80 @@ function populateTimeSelects(startTime){
   ss.value=startTime; updateEndOpts();
 }
 
-// 충돌 시간대 음영처리 — 종료시간 옵션에 적용
+// 충돌 시간대 음영처리 — 시작/종료시간 옵션에 적용
 function updateEndOpts(){
-  const sv=si(document.getElementById('mStart').value);
+  const ss=document.getElementById('mStart');
   const es=document.getElementById('mEnd');
+  const sv=si(ss.value);
 
   // 현재 모달 정보 — 충돌 검사용
-  let conflictStartIdx=Infinity; // 이 인덱스 이후는 모두 충돌
+  let bookings=[]; // 같은 방·같은 날의 다른 예약들
+  let editKey=null;
   if(modalState){
-    const {type,editKey}=modalState;
+    const {type,editKey:ek}=modalState;
+    editKey=ek;
     const date=document.getElementById('mDate').value;
     const bayIdx=parseInt(document.getElementById('mBay').value);
     if(type && date && !isNaN(bayIdx)){
-      // 같은 방·같은 날의 다른 예약 중 시작이 sv 이후이면서 가장 빠른 것 찾기
-      // 그 예약의 시작시간보다 큰 종료시간은 모두 충돌
       Object.entries(bookingsDB[type]||{}).forEach(([key,b])=>{
         if(key===editKey) return;
         if(b.date!==date||b.bayIdx!==bayIdx) return;
-        const bStartIdx=si(b.start);
-        // 다른 예약이 현재 시작시간 이후에 있으면, 그 시작점이 한계
-        if(bStartIdx>=sv && bStartIdx<conflictStartIdx) conflictStartIdx=bStartIdx;
+        bookings.push({startIdx:si(b.start),endIdx:si(b.end)});
       });
     }
   }
 
-  Array.from(es.options).forEach(o=>{
+  // 시작시간: 이미 예약된 시간대(start ~ end-1)는 모두 비활성
+  Array.from(ss.options).forEach(o=>{
     const oi=si(o.value);
-    if(oi<=sv){
-      // 시작시간 이전 옵션
+    const inBooked=bookings.some(b=>oi>=b.startIdx && oi<b.endIdx);
+    if(inBooked){
       o.disabled=true;
-      o.style.color='';
-      o.textContent=o.value;
-    } else if(oi>conflictStartIdx){
-      // 충돌 시간대 — 음영 + 표시
-      o.disabled=true;
-      o.style.color='#c0392b';
+      o.style.color='#aaa';
+      o.style.background='#f0f0eb';
       o.textContent=o.value+' (예약중)';
     } else {
       o.disabled=false;
       o.style.color='';
+      o.style.background='';
       o.textContent=o.value;
     }
   });
+
+  // 종료시간: 시작 이전이거나, 시작과 충돌 예약 사이를 넘어가면 비활성
+  // sv 이후 가장 가까운 예약 시작점 찾기
+  let conflictStartIdx=Infinity;
+  bookings.forEach(b=>{
+    if(b.startIdx>=sv && b.startIdx<conflictStartIdx) conflictStartIdx=b.startIdx;
+  });
+
+  Array.from(es.options).forEach(o=>{
+    const oi=si(o.value);
+    if(oi<=sv){
+      // 시작시간 이전 — 단순 비활성
+      o.disabled=true;
+      o.style.color='';
+      o.style.background='';
+      o.textContent=o.value;
+    } else if(oi>conflictStartIdx){
+      // 다음 예약 시간대 침범 — 회색 + 표시
+      o.disabled=true;
+      o.style.color='#aaa';
+      o.style.background='#f0f0eb';
+      o.textContent=o.value+' (예약중)';
+    } else {
+      o.disabled=false;
+      o.style.color='';
+      o.style.background='';
+      o.textContent=o.value;
+    }
+  });
+
   // 현재 선택된 값이 disabled면 가장 가까운 가능한 값으로 변경
+  if(Array.from(ss.options).find(o=>o.value===ss.value)?.disabled){
+    const f=Array.from(ss.options).find(o=>!o.disabled);
+    if(f) ss.value=f.value;
+  }
   if(Array.from(es.options).find(o=>o.value===es.value)?.disabled){
     const f=Array.from(es.options).find(o=>!o.disabled);
     if(f) es.value=f.value;
