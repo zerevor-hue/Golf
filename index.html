@@ -654,8 +654,7 @@ window.fbSave = function(type, key, data) {
     .catch(e => {
       console.warn('FB 저장 실패:', e);
       clearPending(type, key);
-      showSyncError('저장 실패');
-      alert('예약 저장에 실패했습니다.\n네트워크 상태를 확인하고 새로고침해주세요.\n\n' + (e.message || ''));
+      showSyncError('저장 실패 — 새로고침');
     });
 };
 
@@ -668,8 +667,7 @@ window.fbDelete = function(type, key) {
     .catch(e => {
       console.warn('FB 삭제 실패:', e);
       clearPending(type, key);
-      showSyncError('삭제 실패');
-      alert('예약 삭제에 실패했습니다.\n네트워크 상태를 확인하고 새로고침해주세요.\n\n' + (e.message || ''));
+      showSyncError('삭제 실패 — 새로고침');
     });
 };
 
@@ -692,8 +690,7 @@ window.fbMove = function(type, oldKey, newKey, data) {
       console.warn('FB 이동 실패:', e);
       clearPending(type, oldKey);
       clearPending(type, newKey);
-      showSyncError('이동 실패');
-      alert('예약 이동에 실패했습니다.\n네트워크 상태를 확인하고 새로고침해주세요.\n\n' + (e.message || ''));
+      showSyncError('이동 실패 — 새로고침');
     });
 };
 
@@ -1454,47 +1451,94 @@ function populateTimeSelects(startTime){
   });
   ss.value=startTime; updateEndOpts();
 }
+
+// 충돌 시간대 음영처리 — 종료시간 옵션에 적용
 function updateEndOpts(){
-  const sv=si(document.getElementById('mStart').value),es=document.getElementById('mEnd');
-  Array.from(es.options).forEach(o=>{o.disabled=si(o.value)<=sv;});
-  if(si(es.value)<=sv){const f=Array.from(es.options).find(o=>!o.disabled);if(f)es.value=f.value;}
+  const sv=si(document.getElementById('mStart').value);
+  const es=document.getElementById('mEnd');
+
+  // 현재 모달 정보 — 충돌 검사용
+  let conflictStartIdx=Infinity; // 이 인덱스 이후는 모두 충돌
+  if(modalState){
+    const {type,editKey}=modalState;
+    const date=document.getElementById('mDate').value;
+    const bayIdx=parseInt(document.getElementById('mBay').value);
+    if(type && date && !isNaN(bayIdx)){
+      // 같은 방·같은 날의 다른 예약 중 시작이 sv 이후이면서 가장 빠른 것 찾기
+      // 그 예약의 시작시간보다 큰 종료시간은 모두 충돌
+      Object.entries(bookingsDB[type]||{}).forEach(([key,b])=>{
+        if(key===editKey) return;
+        if(b.date!==date||b.bayIdx!==bayIdx) return;
+        const bStartIdx=si(b.start);
+        // 다른 예약이 현재 시작시간 이후에 있으면, 그 시작점이 한계
+        if(bStartIdx>=sv && bStartIdx<conflictStartIdx) conflictStartIdx=bStartIdx;
+      });
+    }
+  }
+
+  Array.from(es.options).forEach(o=>{
+    const oi=si(o.value);
+    if(oi<=sv){
+      // 시작시간 이전 옵션
+      o.disabled=true;
+      o.style.color='';
+      o.textContent=o.value;
+    } else if(oi>conflictStartIdx){
+      // 충돌 시간대 — 음영 + 표시
+      o.disabled=true;
+      o.style.color='#c0392b';
+      o.textContent=o.value+' (예약중)';
+    } else {
+      o.disabled=false;
+      o.style.color='';
+      o.textContent=o.value;
+    }
+  });
+  // 현재 선택된 값이 disabled면 가장 가까운 가능한 값으로 변경
+  if(Array.from(es.options).find(o=>o.value===es.value)?.disabled){
+    const f=Array.from(es.options).find(o=>!o.disabled);
+    if(f) es.value=f.value;
+  }
 }
 
-// 자동 종료시간 계산 (분 단위)
+// 자동 종료시간 계산 (분 단위) — 모달 처음 열 때의 기본값으로만 사용
 // 스크린골프: 인원수 × 60 + 30
 // 파크골프: 인원수 × 30 + 10
 function calcDurationMinutes(type,people){
   const p=parseInt(people)||1;
   return type==='park' ? p*30+10 : p*60+30;
 }
-function applyAutoEndTime(){
-  if(!modalState) return;
-  const {type}=modalState;
-  const people=document.getElementById('mPeople').value;
-  const start=document.getElementById('mStart').value;
+function calcDefaultEndTime(type,people,startTime){
   const minutes=calcDurationMinutes(type,people);
-  // 10분 슬롯 기준
   const slotsToAdd=Math.ceil(minutes/10);
-  const startIdx=si(start);
+  const startIdx=si(startTime);
   const endIdx=Math.min(startIdx+slotsToAdd,slots.length-1);
-  document.getElementById('mEnd').value=slots[endIdx];
-  updateEndOpts();
+  return slots[endIdx];
 }
+// 시작시간 변경 시 — 기존 duration 유지 (사용자 선택 존중)
 document.getElementById('mStart').addEventListener('change',()=>{
+  const prevStart=modalState?.lastStart||document.getElementById('mStart').value;
+  const newStart=document.getElementById('mStart').value;
+  const curEnd=document.getElementById('mEnd').value;
+  // duration 유지하며 end 이동
+  const durSlots=si(curEnd)-si(prevStart);
+  if(durSlots>0){
+    const newEndIdx=Math.min(si(newStart)+durSlots,slots.length-1);
+    document.getElementById('mEnd').value=slots[newEndIdx];
+  }
+  if(modalState) modalState.lastStart=newStart;
   updateEndOpts();
-  // 새 예약일 때만 자동 재계산
-  if(modalState && !modalState.editKey) applyAutoEndTime();
 });
-document.getElementById('mPeople').addEventListener('change',()=>{
-  // 새 예약일 때만 자동 재계산
-  if(modalState && !modalState.editKey) applyAutoEndTime();
-});
+// 인원 변경 시 — 종료시간 자동 변경하지 않음 (사용자가 원하면 직접 수정)
+// 방/날짜 변경 시 — 충돌 음영처리 갱신
+document.getElementById('mBay').addEventListener('change',updateEndOpts);
+document.getElementById('mDate').addEventListener('change',updateEndOpts);
 
 function openModal(type,bayIdx,time,bayName){
   const found=getAt(type,boardState[type].date,bayIdx,time);
   const b=found?found.b:null;
   const cfg=BOARDS.find(c=>c.type===type);
-  modalState={type,editKey:found?found.key:null};
+  modalState={type,editKey:found?found.key:null,lastStart:b?b.start:time};
   document.getElementById('mTitle').textContent=b?'예약 수정':'예약 입력';
   document.getElementById('mBayLabel').textContent=type==='park'?'타석':'방';
   document.getElementById('mDate').value=b?b.date:boardState[type].date;
@@ -1505,12 +1549,9 @@ function openModal(type,bayIdx,time,bayName){
   populateTimeSelects(b?b.start:time);
   if(b){document.getElementById('mEnd').value=b.end;}
   else{
-    // 새 예약 — 자동 계산된 종료시간 (기본 2명 기준)
-    const defaultPeople=2;
-    const minutes=calcDurationMinutes(type,defaultPeople);
-    const slotsToAdd=Math.ceil(minutes/10);
-    const endIdx=Math.min(si(time)+slotsToAdd,slots.length-1);
-    document.getElementById('mEnd').value=slots[endIdx];
+    // 새 예약 — 기본값으로 자동 계산된 종료시간 (기본 2명 기준)
+    // 사용자가 이후 자유롭게 수정 가능
+    document.getElementById('mEnd').value=calcDefaultEndTime(type,2,time);
   }
   updateEndOpts();
   document.getElementById('mName').value=b?b.name:'';
@@ -1526,7 +1567,7 @@ function openModal(type,bayIdx,time,bayName){
 }
 function openModalForNew(type,bayIdx,start,end){
   const cfg=BOARDS.find(c=>c.type===type);
-  modalState={type,editKey:null};
+  modalState={type,editKey:null,lastStart:start};
   document.getElementById('mTitle').textContent='예약 입력';
   document.getElementById('mBayLabel').textContent=type==='park'?'타석':'방';
   document.getElementById('mDate').value=boardState[type].date;
@@ -1551,6 +1592,17 @@ document.getElementById('mManager').addEventListener('change',function(){
 });
 document.getElementById('mManagerCustom').addEventListener('keydown',function(e){
   if(e.key==='Enter'){const n=this.value.trim();if(!n)return;addToManagerList(n);saveManager(n);rebuildManagerSelect(n);document.getElementById('mManagerCustomWrap').style.display='none';this.value='';}
+});
+
+// 엔터키로 저장 (textarea, 직접입력란 제외)
+document.getElementById('modalBg').addEventListener('keydown',function(e){
+  if(e.key!=='Enter') return;
+  const tag=e.target.tagName;
+  // textarea나 담당자 직접 입력란에서는 엔터 무시 (각자 다른 동작)
+  if(tag==='TEXTAREA') return;
+  if(e.target.id==='mManagerCustom') return;
+  e.preventDefault();
+  document.getElementById('mSave').click();
 });
 
 document.getElementById('mSave').addEventListener('click',()=>{
