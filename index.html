@@ -413,11 +413,32 @@ td.slot.dragging { opacity: 0.4; }
   .page-title { font-size: 13px; }
   /* 달력 — 모바일 사이즈 조정 */
   .big-cal-dow { font-size: 10px; padding: 5px 0; }
-  .big-cal-day { min-height: 58px; padding: 3px 2px; }
-  .big-cal-day-num { font-size: 11px; }
+  .big-cal-day { min-height: 62px; padding: 3px 2px; }
+  /* 숫자 짤림 방지 — top row를 세로로 */
+  .big-cal-day-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: unset;
+  }
+  .big-cal-day-num { font-size: 11px; line-height: 1.2; }
+  .big-cal-day.today .big-cal-day-num { padding: 1px 5px; font-size: 10px; }
+  /* 배지 — 숫자 아래로, 더 작게 */
+  .shift-badges {
+    justify-content: flex-start;
+    gap: 1px;
+  }
+  .shift-badge {
+    font-size: 7px !important;
+    padding: 1px 4px !important;
+    border-radius: 6px !important;
+    line-height: 1.3;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .cal-event { font-size: 8px; padding: 1px 3px; }
-  .shift-badge { font-size: 8px; padding: 1px 4px; }
-  .holiday-name { font-size: 8px; max-width: 42px; }
+  .holiday-name { font-size: 8px; max-width: 100%; }
   /* 카드/모달 padding 축소 */
   .card { padding: 12px 10px !important; }
   .modal { padding: 16px; max-width: calc(100vw - 24px); }
