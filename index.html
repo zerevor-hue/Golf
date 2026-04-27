@@ -3537,7 +3537,9 @@ function renderBigCalendar(){
         b.className='shift-badge';
         const col=getStaffColor(staff);
         b.style.cssText=`background:${col};background-color:${col};color:#fff;`;
-        b.textContent=staff.length>2?staff.slice(-2):staff;
+        // 모바일(640px 이하)에서만 뒤 2글자, PC는 전체 이름
+        const isMobile=window.innerWidth<=640;
+        b.textContent=isMobile&&staff.length>2?staff.slice(-2):staff;
         b.title=staff; // 전체 이름은 툴팁으로
         if(workEditMode){
           b.classList.add('removable');
