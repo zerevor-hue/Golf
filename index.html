@@ -442,14 +442,13 @@ td.slot.dragging { opacity: 0.4; }
     flex: 1;
   }
   .shift-badge {
-    font-size: 7px !important;
-    padding: 1px 3px !important;
-    border-radius: 5px !important;
-    line-height: 1.3;
+    font-size: 8px !important;
+    padding: 1px 4px !important;
+    border-radius: 6px !important;
+    line-height: 1.4;
     white-space: nowrap;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: unset;
     -webkit-text-fill-color: #fff !important;
   }
   .cal-event { font-size: 8px; padding: 1px 2px; }
@@ -3538,8 +3537,8 @@ function renderBigCalendar(){
         b.className='shift-badge';
         const col=getStaffColor(staff);
         b.style.cssText=`background:${col};background-color:${col};color:#fff;`;
-        b.textContent=staff;
-        b.title=staff;
+        b.textContent=staff.length>2?staff.slice(-2):staff;
+        b.title=staff; // 전체 이름은 툴팁으로
         if(workEditMode){
           b.classList.add('removable');
           b.onclick=(e)=>{
