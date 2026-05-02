@@ -751,22 +751,104 @@ td.slot.dragging { opacity: 0.4; }
 
 <!-- ══ 방문 통계 ══ -->
 <div class="page" id="page-stats">
-  <div class="date-range">
-    <input type="date" id="dateFrom">
-    <span>~</span>
-    <input type="date" id="dateTo">
-    <button class="btn blue" onclick="calcStats()">조회</button>
-    <button class="btn" onclick="setQuick(7)">최근 7일</button>
-    <button class="btn" onclick="setQuick(30)">최근 30일</button>
+  <!-- 필터 카드 -->
+  <div class="card" style="padding:14px;">
+    <div style="font-size:13px;font-weight:800;color:var(--muted);margin-bottom:10px;">🔍 필터</div>
+
+    <!-- 1. 기간 -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">기간</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <input type="date" id="dateFrom" style="flex:1;min-width:120px;">
+        <span style="color:var(--muted);">~</span>
+        <input type="date" id="dateTo" style="flex:1;min-width:120px;">
+        <button class="btn" onclick="setQuick(7)">7일</button>
+        <button class="btn" onclick="setQuick(30)">30일</button>
+        <button class="btn" onclick="setQuick(90)">90일</button>
+      </div>
+    </div>
+
+    <!-- 2. 이름 검색 -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">이름 검색</div>
+      <input type="text" id="statsNameFilter" placeholder="이름 입력..." oninput="calcStats()"
+        style="width:100%;padding:8px 10px;border:0.5px solid var(--border-md);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;">
+    </div>
+
+    <!-- 3. 방문 횟수 범위 -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">방문 횟수</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <input type="number" id="statsVisitMin" placeholder="최소" min="0" oninput="calcStats()"
+          style="width:80px;padding:8px;border:0.5px solid var(--border-md);border-radius:8px;font-size:14px;text-align:center;font-family:inherit;">
+        <span style="color:var(--muted);">~</span>
+        <input type="number" id="statsVisitMax" placeholder="최대" min="0" oninput="calcStats()"
+          style="width:80px;padding:8px;border:0.5px solid var(--border-md);border-radius:8px;font-size:14px;text-align:center;font-family:inherit;">
+        <span style="font-size:12px;color:var(--muted);">회 (비우면 전체)</span>
+      </div>
+    </div>
+
+    <!-- 4. 주 이용 (체크박스) -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">주 이용</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="filterScreen" checked onchange="calcStats()" style="width:16px;height:16px;cursor:pointer;accent-color:#2563a8;"> 스크린골프
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="filterPark" checked onchange="calcStats()" style="width:16px;height:16px;cursor:pointer;accent-color:#1a7a4a;"> 파크골프
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="filterBoth" onchange="calcStats()" style="width:16px;height:16px;cursor:pointer;accent-color:#7b5ea7;"> 스크린+파크 모두
+        </label>
+      </div>
+    </div>
+
+    <!-- 5. 등급 (체크박스) -->
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">등급</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="gradeAll" checked onchange="onGradeAllChange()" style="width:16px;height:16px;cursor:pointer;"> 전체
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="출자회원" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;accent-color:#1a7a4a;"> <span class="badge badge-green">출자회원</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="동호회원" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;accent-color:#2563a8;"> <span class="badge badge-blue">동호회원</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="일반" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;"> <span class="badge badge-gray">일반</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="타지역" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;accent-color:#e67e22;"> <span class="badge badge-orange">타지역</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="비회원" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;accent-color:#555;"> <span class="badge badge-gray">비회원</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" class="gradeChk" value="__unknown__" checked onchange="onGradeChkChange()" style="width:16px;height:16px;cursor:pointer;accent-color:#aaa;"> <span class="badge badge-gray">미등록</span>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn primary" onclick="calcStats()" style="width:100%;padding:11px;">조회</button>
   </div>
+
+  <!-- 지표 카드 -->
   <div class="stat-cards">
     <div class="stat-card"><div class="stat-num" id="sTot">-</div><div class="stat-label">총 게임 수</div></div>
     <div class="stat-card"><div class="stat-num" id="sUniq">-</div><div class="stat-label">방문 회원 수</div></div>
     <div class="stat-card"><div class="stat-num" id="sReg">-</div><div class="stat-label">단골 <span style="font-size:10px;color:var(--muted);">14일·2회↑</span></div></div>
     <div class="stat-card"><div class="stat-num" id="sTotal">-</div><div class="stat-label">전체 회원</div></div>
   </div>
+
+  <!-- 방문 순위 -->
   <div class="card">
-    <div style="font-size:14px;font-weight:800;margin-bottom:12px;">🏆 방문 순위</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:800;">🏆 방문 순위</div>
+      <div id="statsResultCount" style="font-size:12px;color:var(--muted);font-weight:700;"></div>
+    </div>
     <table class="rank-table">
       <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>방문 횟수</th><th>주 이용</th><th>등급</th></tr></thead>
       <tbody id="rankBody"></tbody>
@@ -2812,31 +2894,51 @@ document.getElementById('memberModalBg').addEventListener('click',e=>{if(e.targe
 
 // ══ 방문 통계 ══
 function setQuick(days){
-  const to=new Date(),from=new Date(); from.setDate(from.getDate()-days);
+  const to=new Date(),from=new Date(); from.setDate(from.getDate()-days+1);
   document.getElementById('dateFrom').value=toDateStr(from);
   document.getElementById('dateTo').value=toDateStr(to);
   calcStats();
 }
+
+function onGradeAllChange(){
+  const all=document.getElementById('gradeAll').checked;
+  document.querySelectorAll('.gradeChk').forEach(c=>{c.checked=all;});
+  calcStats();
+}
+function onGradeChkChange(){
+  const chks=Array.from(document.querySelectorAll('.gradeChk'));
+  document.getElementById('gradeAll').checked=chks.every(c=>c.checked);
+  calcStats();
+}
+
 function calcStats(){
   const from=document.getElementById('dateFrom').value;
   const to=document.getElementById('dateTo').value;
   if(!from||!to) return;
 
-  // 기간 내 예약 집계 — 이름을 띄어쓰기로 분리해 개인별 집계
-  const nameVisits={};  // {name: {visits, games, types, dates[]}}
+  // ── 필터값 읽기 ──
+  const nameQ=(document.getElementById('statsNameFilter')?.value||'').trim().toLowerCase();
+  const visitMin=parseInt(document.getElementById('statsVisitMin')?.value)||0;
+  const visitMaxVal=document.getElementById('statsVisitMax')?.value;
+  const visitMax=visitMaxVal?parseInt(visitMaxVal):Infinity;
+  const fScreen=document.getElementById('filterScreen')?.checked!==false;
+  const fPark=document.getElementById('filterPark')?.checked!==false;
+  const fBoth=document.getElementById('filterBoth')?.checked===true;
+  const gradeAllEl=document.getElementById('gradeAll');
+  const gradeAll=!gradeAllEl||gradeAllEl.checked;
+  const selectedGrades=Array.from(document.querySelectorAll('.gradeChk')).filter(c=>c.checked).map(c=>c.value);
+
+  // ── 기간 내 예약 집계 ──
+  const nameVisits={};
   ['screen','park'].forEach(type=>{
     Object.values(bookingsDB[type]).forEach(b=>{
       if(b.date>=from&&b.date<=to){
         const games=parseInt(b.games||1);
-        const people=parseInt(b.people||1);
-        // 이름을 띄어쓰기로 분리 (홍길동 김철수 → 각각 1건씩)
         const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
-        // 게임 수는 전체 예약 기준이므로 개인당 1/names.length로 나누지 않고 동일하게 기록
-        // (방문 횟수는 예약 1건 = 각 이름 1회 방문)
         names.forEach(name=>{
           if(!nameVisits[name]) nameVisits[name]={visits:0,games:0,types:{screen:0,park:0},dates:[]};
           nameVisits[name].visits++;
-          nameVisits[name].games+=games; // 게임 수는 동일하게 기록
+          nameVisits[name].games+=games;
           nameVisits[name].types[type]++;
           nameVisits[name].dates.push(b.date);
         });
@@ -2844,51 +2946,83 @@ function calcStats(){
     });
   });
 
-  const allMembers=Object.values(membersDB);
-  const visitList=Object.entries(nameVisits).sort((a,b)=>b[1].visits-a[1].visits);
-
-  // 총 게임 수 — 예약 건별로 (인원 × 게임 수) 합산 (이름 분리와 무관하게 예약 단위로 계산)
+  // ── 전체 통계 (필터 전) ──
   let totGames=0;
   ['screen','park'].forEach(type=>{
     Object.values(bookingsDB[type]).forEach(b=>{
-      if(b.date>=from&&b.date<=to){
-        totGames+=parseInt(b.games||1)*parseInt(b.people||1);
-      }
+      if(b.date>=from&&b.date<=to) totGames+=parseInt(b.games||1)*parseInt(b.people||1);
     });
   });
-  // 방문 회원 수
-  const uniq=visitList.length;
-  // 단골 — 14일 내 2회 이상 방문한 회원 수
   const today14=toDateStr(new Date());
   const d14=new Date(); d14.setDate(d14.getDate()-14);
   const date14=toDateStr(d14);
-  const regularCount=Object.values(nameVisits).filter(v=>{
-    const recentDates=v.dates.filter(d=>d>=date14&&d<=today14);
-    return recentDates.length>=2;
-  }).length;
-  // 전체 회원 수
-  const totalMembers=allMembers.length;
-
+  const regularCount=Object.values(nameVisits).filter(v=>
+    v.dates.filter(d=>d>=date14&&d<=today14).length>=2
+  ).length;
   document.getElementById('sTot').textContent=totGames;
-  document.getElementById('sUniq').textContent=uniq;
+  document.getElementById('sUniq').textContent=Object.keys(nameVisits).length;
   document.getElementById('sReg').textContent=regularCount;
-  document.getElementById('sTotal').textContent=totalMembers;
+  document.getElementById('sTotal').textContent=Object.values(membersDB).length;
 
-  const max=visitList[0]?.[1].visits||1;
+  // ── 필터 적용 ──
+  let filtered=Object.entries(nameVisits);
+
+  // 1. 이름
+  if(nameQ) filtered=filtered.filter(([name])=>name.toLowerCase().includes(nameQ));
+
+  // 2. 방문 횟수
+  filtered=filtered.filter(([,v])=>v.visits>=visitMin&&v.visits<=visitMax);
+
+  // 3. 주 이용
+  filtered=filtered.filter(([,v])=>{
+    const hasS=v.types.screen>0, hasP=v.types.park>0;
+    const both=hasS&&hasP;
+    if(fBoth) return both;
+    if(fScreen&&!fPark) return hasS&&!hasP;
+    if(!fScreen&&fPark) return hasP&&!hasS;
+    if(fScreen&&fPark) return true;
+    return true;
+  });
+
+  // 4. 등급
+  if(!gradeAll&&selectedGrades.length){
+    filtered=filtered.filter(([name])=>{
+      const m=Object.values(membersDB).find(x=>x.name===name);
+      const grades=m?(Array.isArray(m.grades)?m.grades:(m.grade?[m.grade]:[])):[]; 
+      if(grades.length===0) return selectedGrades.includes('__unknown__');
+      return grades.some(g=>selectedGrades.includes(g));
+    });
+  }
+
+  // ── 순위 렌더 ──
+  filtered.sort((a,b)=>b[1].visits-a[1].visits);
+  const max=filtered[0]?.[1].visits||1;
   const rc=['r1','r2','r3'];
-  document.getElementById('rankBody').innerHTML=visitList.map(([name,v],i)=>{
-    const m=Object.values(membersDB).find(x=>x.name===name);
-    const grade=m?m.grade:'일반';
-    const isG=v.types.park>=v.types.screen;
-    const tag=v.types.screen>0&&v.types.park>0?'<span class="badge b-both">스크린+파크</span>':v.types.screen>0?'<span class="badge b-screen">스크린</span>':'<span class="badge b-park">파크</span>';
-    return `<tr>
-      <td class="rn ${rc[i]||''}">${i+1}</td>
-      <td style="font-weight:800;">${name}</td>
-      <td><div style="font-weight:800;">${v.visits}회</div><div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(v.visits/max*100)}%"></div></div></td>
-      <td>${tag}</td>
-      <td><span class="badge ${gc(grade)}">${grade}</span></td>
-    </tr>`;
-  }).join('');
+  const countEl=document.getElementById('statsResultCount');
+  if(countEl) countEl.textContent=`${filtered.length}명`;
+
+  document.getElementById('rankBody').innerHTML=filtered.length===0
+    ?`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted);">조건에 맞는 방문자가 없습니다</td></tr>`
+    :filtered.map(([name,v],i)=>{
+      const m=Object.values(membersDB).find(x=>x.name===name);
+      const grades=m?(Array.isArray(m.grades)?m.grades:(m.grade?[m.grade]:[])):[];
+      const gradeHtml=grades.length
+        ?grades.map(g=>`<span class="badge ${gc(g)}">${g}</span>`).join(' ')
+        :'<span class="badge badge-gray">미등록</span>';
+      const isG=v.types.park>=v.types.screen;
+      const tag=v.types.screen>0&&v.types.park>0
+        ?'<span class="badge b-both">스크린+파크</span>'
+        :v.types.screen>0?'<span class="badge b-screen">스크린</span>'
+        :'<span class="badge b-park">파크</span>';
+      return `<tr>
+        <td class="rn ${rc[i]||''}">${i+1}</td>
+        <td style="font-weight:800;">${name}</td>
+        <td><div style="font-weight:800;">${v.visits}회</div>
+          <div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(v.visits/max*100)}%"></div></div></td>
+        <td>${tag}</td>
+        <td>${gradeHtml}</td>
+      </tr>`;
+    }).join('');
 }
 
 // ══ 탭 전환 ══
