@@ -806,10 +806,13 @@ td.slot.dragging { opacity: 0.4; }
         <div style="font-size:11px;color:var(--muted);margin-top:5px;">둘 다 선택 시 스크린+파크 이용자까지 포함</div>
       </div>
 
-      <!-- 4-b. 이용 시간대 -->
+      <!-- 4-b. 이용 시간대 & 평일/주말 -->
       <div style="margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">이용 시간대</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">이용 패턴</div>
+
+        <!-- 시간대 -->
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;">주 이용 시간대 <span style="font-weight:500;">(가장 많이 방문하는 시간대 기준)</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;cursor:pointer;">
             <input type="checkbox" id="timeAll" checked onchange="onTimeAllChange()" style="width:16px;height:16px;cursor:pointer;"> 전체
           </label>
@@ -819,7 +822,23 @@ td.slot.dragging { opacity: 0.4; }
           <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="timeChk" value="15~18" checked onchange="onTimeChkChange()" style="width:15px;height:15px;cursor:pointer;"> <span style="font-size:12px;font-weight:700;background:#fff3e0;color:#e67e22;padding:2px 8px;border-radius:8px;">15~18시</span></label>
           <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="timeChk" value="18~22" checked onchange="onTimeChkChange()" style="width:15px;height:15px;cursor:pointer;"> <span style="font-size:12px;font-weight:700;background:#ede9fe;color:#7b5ea7;padding:2px 8px;border-radius:8px;">18~22시</span></label>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:5px;">선택한 시간대에 한 번이라도 방문한 사람 표시</div>
+
+        <!-- 평일/주말 -->
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;">주 방문 요일 <span style="font-weight:500;">(평일/주말 방문 비율 기준)</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;cursor:pointer;">
+            <input type="checkbox" id="dayTypeAll" checked onchange="onDayTypeAllChange()" style="width:16px;height:16px;cursor:pointer;"> 전체
+          </label>
+          <div style="width:1px;height:16px;background:var(--border);"></div>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" class="dayTypeChk" value="weekday" checked onchange="onDayTypeChkChange()" style="width:15px;height:15px;cursor:pointer;">
+            <span style="font-size:12px;font-weight:700;background:#f0f0eb;color:#555;padding:2px 8px;border-radius:8px;">평일 선호</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" class="dayTypeChk" value="weekend" checked onchange="onDayTypeChkChange()" style="width:15px;height:15px;cursor:pointer;">
+            <span style="font-size:12px;font-weight:700;background:#ffe0e0;color:#c0392b;padding:2px 8px;border-radius:8px;">주말·공휴일 선호</span>
+          </label>
+        </div>
       </div>
 
       <!-- 5. 등급 -->
@@ -2916,6 +2935,17 @@ function toggleStatsFilter(){
   btn.textContent=open?'펼치기 ▶':'접기 ▼';
 }
 
+function onDayTypeAllChange(){
+  const all=document.getElementById('dayTypeAll').checked;
+  document.querySelectorAll('.dayTypeChk').forEach(c=>{c.checked=all;});
+  calcStats();
+}
+function onDayTypeChkChange(){
+  const chks=Array.from(document.querySelectorAll('.dayTypeChk'));
+  document.getElementById('dayTypeAll').checked=chks.every(c=>c.checked);
+  calcStats();
+}
+
 function onTimeAllChange(){
   const all=document.getElementById('timeAll').checked;
   document.querySelectorAll('.timeChk').forEach(c=>{c.checked=all;});
@@ -2964,13 +2994,19 @@ function calcStats(){
         // 시간대 분류
         const h=parseInt((b.start||'09:00').split(':')[0]);
         const tBucket=h<12?'09~12':h<15?'12~15':h<18?'15~18':'18~22';
+        // 평일/주말 분류 (공휴일은 holidayMap 참조)
+        const dow=new Date(b.date).getDay();
+        const hMap=getHolidayMap(new Date(b.date).getFullYear());
+        const isWeekend=(dow===0||dow===6||!!hMap[b.date]);
         names.forEach(name=>{
-          if(!nameVisits[name]) nameVisits[name]={visits:0,games:0,types:{screen:0,park:0},dates:[],times:{'09~12':0,'12~15':0,'15~18':0,'18~22':0}};
+          if(!nameVisits[name]) nameVisits[name]={visits:0,games:0,types:{screen:0,park:0},dates:[],times:{'09~12':0,'12~15':0,'15~18':0,'18~22':0},weekday:0,weekend:0};
           nameVisits[name].visits++;
           nameVisits[name].games+=games;
           nameVisits[name].types[type]++;
           nameVisits[name].dates.push(b.date);
           nameVisits[name].times[tBucket]++;
+          if(isWeekend) nameVisits[name].weekend++;
+          else nameVisits[name].weekday++;
         });
       }
     });
@@ -3022,15 +3058,31 @@ function calcStats(){
     });
   }
 
-  // 5. 이용 시간대
+  // 5. 주 이용 시간대 — 가장 많이 방문한 시간대가 선택된 것 중 하나인 사람
   const timeAllEl=document.getElementById('timeAll');
   const timeAll=!timeAllEl||timeAllEl.checked;
   if(!timeAll){
     const selectedTimes=Array.from(document.querySelectorAll('.timeChk')).filter(c=>c.checked).map(c=>c.value);
     if(selectedTimes.length){
-      filtered=filtered.filter(([,v])=>
-        selectedTimes.some(t=>(v.times?.[t]||0)>0)
-      );
+      filtered=filtered.filter(([,v])=>{
+        // 가장 많이 방문한 시간대 찾기
+        const topTime=Object.entries(v.times||{}).sort((a,b)=>b[1]-a[1])[0]?.[0];
+        return selectedTimes.includes(topTime);
+      });
+    }
+  }
+
+  // 6. 주 방문 요일 — 평일/주말 중 더 많이 방문한 쪽
+  const dayTypeAllEl=document.getElementById('dayTypeAll');
+  const dayTypeAll=!dayTypeAllEl||dayTypeAllEl.checked;
+  if(!dayTypeAll){
+    const selectedDayTypes=Array.from(document.querySelectorAll('.dayTypeChk')).filter(c=>c.checked).map(c=>c.value);
+    if(selectedDayTypes.length){
+      filtered=filtered.filter(([,v])=>{
+        const prefersWeekend=(v.weekend||0)>=(v.weekday||0);
+        const preferred=prefersWeekend?'weekend':'weekday';
+        return selectedDayTypes.includes(preferred);
+      });
     }
   }
 
