@@ -2545,13 +2545,26 @@ function analysisBoxHTML(name){
 }
 
 function getMemberVisits(name){
+  if(!name) return 0;
   let cnt=0;
-  ['screen','park'].forEach(type=>{ Object.values(bookingsDB[type]).forEach(b=>{if(b.name===name)cnt++;}); });
+  ['screen','park'].forEach(type=>{
+    Object.values(bookingsDB[type]).forEach(b=>{
+      // 띄어쓰기로 여러 명 입력된 경우도 개별 집계
+      const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
+      if(names.includes(name)) cnt++;
+    });
+  });
   return cnt;
 }
 function getLastVisit(name){
+  if(!name) return '';
   let last='';
-  ['screen','park'].forEach(type=>{ Object.values(bookingsDB[type]).forEach(b=>{if(b.name===name&&b.date>last)last=b.date;}); });
+  ['screen','park'].forEach(type=>{
+    Object.values(bookingsDB[type]).forEach(b=>{
+      const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
+      if(names.includes(name) && b.date>last) last=b.date;
+    });
+  });
   return last;
 }
 
