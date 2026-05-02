@@ -781,7 +781,7 @@ td.slot.dragging { opacity: 0.4; }
 
       <!-- 3. 방문 횟수 -->
       <div style="margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">방문 횟수</div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">게임 횟수 (게임 수 합산 기준)</div>
         <div style="display:flex;align-items:center;gap:6px;">
           <input type="number" id="statsVisitMin" placeholder="최소" min="0" oninput="calcStats()"
             style="width:72px;padding:8px;border:0.5px solid var(--border-md);border-radius:8px;font-size:14px;text-align:center;font-family:inherit;">
@@ -877,7 +877,7 @@ td.slot.dragging { opacity: 0.4; }
       <div id="statsResultCount" style="font-size:12px;color:var(--muted);font-weight:700;"></div>
     </div>
     <table class="rank-table">
-      <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>방문 횟수</th><th>주 이용</th><th>등급</th></tr></thead>
+      <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>게임 횟수</th><th>주 이용</th><th>등급</th></tr></thead>
       <tbody id="rankBody"></tbody>
     </table>
   </div>
@@ -2658,9 +2658,8 @@ function getMemberVisits(name){
   let cnt=0;
   ['screen','park'].forEach(type=>{
     Object.values(bookingsDB[type]).forEach(b=>{
-      // 띄어쓰기로 여러 명 입력된 경우도 개별 집계
       const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
-      if(names.includes(name)) cnt++;
+      if(names.includes(name)) cnt+=parseInt(b.games||1); // 게임 수만큼 카운트
     });
   });
   return cnt;
@@ -3000,7 +2999,7 @@ function calcStats(){
         const isWeekend=(dow===0||dow===6||!!hMap[b.date]);
         names.forEach(name=>{
           if(!nameVisits[name]) nameVisits[name]={visits:0,games:0,types:{screen:0,park:0},dates:[],times:{'09~12':0,'12~15':0,'15~18':0,'18~22':0},weekday:0,weekend:0};
-          nameVisits[name].visits++;
+          nameVisits[name].visits+=games; // 게임 수만큼 카운트
           nameVisits[name].games+=games;
           nameVisits[name].types[type]++;
           nameVisits[name].dates.push(b.date);
@@ -3109,7 +3108,7 @@ function calcStats(){
       return `<tr>
         <td class="rn ${rc[i]||''}">${i+1}</td>
         <td style="font-weight:800;">${name}</td>
-        <td><div style="font-weight:800;">${v.visits}회</div>
+        <td><div style="font-weight:800;">${v.visits}게임</div>
           <div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(v.visits/max*100)}%"></div></div></td>
         <td>${tag}</td>
         <td>${gradeHtml}</td>
