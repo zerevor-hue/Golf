@@ -1756,6 +1756,17 @@ function attachSlotEvents(td,type,bayIdx,time,bayName){
   td.addEventListener('click',e=>{
     if(drag&&drag.moved) return;
     if(selectDrag&&selectDrag.committed) return;
+    const found=getAt(type,boardState[type].date,bayIdx,time);
+    if(found){
+      // 우상단 24×24px 영역 클릭 → 회색 처리 토글
+      const rect=td.getBoundingClientRect();
+      const rx=e.clientX-rect.left;
+      const ry=e.clientY-rect.top;
+      if(rx>rect.width-26&&ry<26){
+        toggleDimmed(type,found.key);
+        return;
+      }
+    }
     openModal(type,bayIdx,time,bayName);
   });
 
@@ -1803,6 +1814,17 @@ function attachSlotEvents(td,type,bayIdx,time,bayName){
     if(pressTimer){
       clearTimeout(pressTimer);
       pressTimer=null;
+      // 짧은 탭 — 우상단 영역이면 회색 처리
+      if(!pressTriggered&&e.changedTouches.length){
+        const t=e.changedTouches[0];
+        const rect=td.getBoundingClientRect();
+        const rx=t.clientX-rect.left;
+        const ry=t.clientY-rect.top;
+        const found=getAt(type,boardState[type].date,bayIdx,time);
+        if(found&&rx>rect.width-26&&ry<26){
+          toggleDimmed(type,found.key);
+        }
+      }
     }
   },{passive:true});
 
@@ -2109,25 +2131,12 @@ function refreshTable(type){
           const cbtn=document.createElement('button');
           cbtn.className='slot-check-btn';
           cbtn.textContent=dimmed?'✓':'';
-          cbtn.title=dimmed?'회색 해제':'완료 처리';
-          cbtn.style.cssText=`position:absolute;top:3px;right:3px;width:17px;height:17px;
-            border-radius:50%;z-index:20;cursor:pointer;pointer-events:auto;
-            border:1.5px solid ${dimmed?'rgba(120,120,120,0.9)':'rgba(255,255,255,0.55)'};
-            background:${dimmed?'rgba(100,100,100,0.55)':'rgba(255,255,255,0.15)'};
+          cbtn.style.cssText=`position:absolute;top:3px;right:3px;width:18px;height:18px;
+            border-radius:50%;z-index:5;pointer-events:none;cursor:default;
+            border:1.5px solid ${dimmed?'rgba(60,60,60,0.8)':'rgba(255,255,255,0.6)'};
+            background:${dimmed?'rgba(60,60,60,0.5)':'rgba(255,255,255,0.15)'};
             color:#fff;font-size:9px;font-weight:900;padding:0;line-height:1;
             display:flex;align-items:center;justify-content:center;`;
-          cbtn.addEventListener('mousedown',function(e){ e.stopPropagation(); e.preventDefault(); });
-          cbtn.addEventListener('touchstart',function(e){ e.stopPropagation(); },{passive:false});
-          cbtn.addEventListener('click',function(e){
-            e.stopPropagation();
-            e.preventDefault();
-            toggleDimmed(type,found.key);
-          });
-          cbtn.addEventListener('touchend',function(e){
-            e.stopPropagation();
-            e.preventDefault();
-            toggleDimmed(type,found.key);
-          });
           td.appendChild(cbtn);
         } else {td.style.overflow='visible';td.style.position='relative';td.innerHTML='';}
       } else {td.className='slot empty';td.style.cssText='';td.innerHTML='';}
