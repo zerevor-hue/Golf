@@ -1626,10 +1626,10 @@ function buildCalPopup(type,dateWrapEl){
 }
 
 function toggleDimmed(type, key){
-  const b=bookingsDB[type]?.[key];
-  if(!b) return;
+  if(!bookingsDB[type]) return;
+  const b=bookingsDB[type][key];
+  if(!b){ console.warn('toggleDimmed: key not found',type,key,Object.keys(bookingsDB[type]).slice(0,3)); return; }
   b.dimmed=!b.dimmed;
-  // 로컬키 → Firebase키 변환: __ → --, . → _
   const fbKey=key.replace(/\./g,'_').replace(/__/g,'--');
   fbSet(`bookings/${type}/${fbKey}/dimmed`, b.dimmed ? true : null);
   renderCal(type);
@@ -2116,6 +2116,8 @@ function refreshTable(type){
             background:${dimmed?'rgba(100,100,100,0.55)':'rgba(255,255,255,0.15)'};
             color:#fff;font-size:9px;font-weight:900;padding:0;line-height:1;
             display:flex;align-items:center;justify-content:center;`;
+          cbtn.addEventListener('mousedown',function(e){ e.stopPropagation(); e.preventDefault(); });
+          cbtn.addEventListener('touchstart',function(e){ e.stopPropagation(); },{passive:false});
           cbtn.addEventListener('click',function(e){
             e.stopPropagation();
             e.preventDefault();
