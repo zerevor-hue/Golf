@@ -1629,7 +1629,8 @@ function toggleDimmed(type, key){
   const b=bookingsDB[type]?.[key];
   if(!b) return;
   b.dimmed=!b.dimmed;
-  const fbKey=key.replace(/_/g,'-');
+  // 로컬키 → Firebase키 변환: __ → --, . → _
+  const fbKey=key.replace(/\./g,'_').replace(/__/g,'--');
   fbSet(`bookings/${type}/${fbKey}/dimmed`, b.dimmed ? true : null);
   renderCal(type);
 }
@@ -2098,14 +2099,34 @@ function refreshTable(type){
             : '';
           const games=parseInt(b.games||1);
           const gamesSpan=games>1?`<span style="color:#c0392b;font-weight:800;">${games}게임</span> `:'';
-          // 완료 체크 버튼 (우상단, pointer-events:auto)
-          const checkBtn=`<button class="slot-check-btn" onclick="event.stopPropagation();toggleDimmed('${type}','${found.key}')" style="position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;border:1.5px solid ${dimmed?'#888':'rgba(255,255,255,0.6)'};background:${dimmed?'rgba(120,120,120,0.5)':'rgba(255,255,255,0.2)'};cursor:pointer;pointer-events:auto;z-index:10;display:flex;align-items:center;justify-content:center;font-size:10px;color:${dimmed?'#fff':'rgba(255,255,255,0.8)'};padding:0;line-height:1;">${dimmed?'✓':''}</button>`;
-          td.innerHTML=`<div class="slot-content" style="position:relative;height:${totalHeight}px;background:${p.bg};border:1.5px solid ${dimmed?p.border:bl?'rgba(180,0,0,0.5)':'rgba(0,0,0,0.45)'};border-radius:4px;pointer-events:none;${dimmed?'opacity:0.7;':''}">
-            ${checkBtn}
+          // slot-content는 원래 CSS(position:absolute) 그대로 유지
+          td.innerHTML=`<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};border:1.5px solid ${dimmed?'rgba(150,150,150,0.5)':bl?'rgba(180,0,0,0.5)':'rgba(0,0,0,0.45)'};border-radius:4px;pointer-events:none;${dimmed?'opacity:0.65;':''}">
             ${blLabel}
             <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
             ${nameLines}
             <span class="slot-sub" style="color:${p.text}">${b.people}명 ${gamesSpan}${holeSpan}</span>${memoLine}</div>`;
+          // ✓ 버튼은 td에 직접 추가 (pointer-events:none 밖)
+          const cbtn=document.createElement('button');
+          cbtn.className='slot-check-btn';
+          cbtn.textContent=dimmed?'✓':'';
+          cbtn.title=dimmed?'회색 해제':'완료 처리';
+          cbtn.style.cssText=`position:absolute;top:3px;right:3px;width:17px;height:17px;
+            border-radius:50%;z-index:20;cursor:pointer;pointer-events:auto;
+            border:1.5px solid ${dimmed?'rgba(120,120,120,0.9)':'rgba(255,255,255,0.55)'};
+            background:${dimmed?'rgba(100,100,100,0.55)':'rgba(255,255,255,0.15)'};
+            color:#fff;font-size:9px;font-weight:900;padding:0;line-height:1;
+            display:flex;align-items:center;justify-content:center;`;
+          cbtn.addEventListener('click',function(e){
+            e.stopPropagation();
+            e.preventDefault();
+            toggleDimmed(type,found.key);
+          });
+          cbtn.addEventListener('touchend',function(e){
+            e.stopPropagation();
+            e.preventDefault();
+            toggleDimmed(type,found.key);
+          });
+          td.appendChild(cbtn);
         } else {td.style.overflow='visible';td.style.position='relative';td.innerHTML='';}
       } else {td.className='slot empty';td.style.cssText='';td.innerHTML='';}
     });
