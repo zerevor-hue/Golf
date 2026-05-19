@@ -1628,10 +1628,13 @@ function buildCalPopup(type,dateWrapEl){
 function toggleDimmed(type, key){
   if(!bookingsDB[type]) return;
   const b=bookingsDB[type][key];
-  if(!b){ console.warn('toggleDimmed: key not found',type,key,Object.keys(bookingsDB[type]).slice(0,3)); return; }
+  if(!b){ console.warn('toggleDimmed: key not found',type,key); return; }
   b.dimmed=!b.dimmed;
-  const fbKey=key.replace(/\./g,'_').replace(/__/g,'--');
-  fbSet(`bookings/${type}/${fbKey}/dimmed`, b.dimmed ? true : null);
+  // fbSave로 전체 예약 데이터 저장 (pendingWrites 보호 포함)
+  // → onValue가 와도 로컬 상태를 덮어쓰지 않음
+  const saveData={...b};
+  if(!b.dimmed) delete saveData.dimmed; // false면 필드 자체 제거
+  window.fbSave(type, key, saveData);
   renderCal(type);
 }
 
