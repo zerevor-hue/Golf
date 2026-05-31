@@ -3976,19 +3976,17 @@ function exportScreenExcel(date){
   if(!date){alert('날짜를 선택해주세요.');return;}
   if(typeof JSZip==='undefined'){alert('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.');return;}
   try{
-    // ① 템플릿 바이너리 디코드
     const bStr=atob(SCREEN_EXCEL_TEMPLATE);
     const bytes=new Uint8Array(bStr.length);
     for(let i=0;i<bStr.length;i++) bytes[i]=bStr.charCodeAt(i);
 
     JSZip.loadAsync(bytes).then(function(zip){
-      // ② 날짜 계산
       const d=new Date(date+'T00:00:00');
       const days=['일','월','화','수','목','금','토'];
       const sheetName=(d.getMonth()+1)+'-'+d.getDate()+'-'+days[d.getDay()];
       const serial=Math.round((d-new Date(1899,11,30))/86400000);
 
-      // ③ 예약 데이터 수집
+      // 예약 데이터
       const RNUMS=[1,3,5,7];
       const RSTART={1:5,3:11,5:17,7:23};
       const MAX=5;
@@ -3998,9 +3996,11 @@ function exportScreenExcel(date){
         const rn=RNUMS[b.bayIdx];
         if(rn)rooms[rn].push(b);
       });
-      RNUMS.forEach(function(r){rooms[r].sort(function(a,b){return(a.start||'').localeCompare(b.start||'');});});
+      RNUMS.forEach(function(r){
+        rooms[r].sort(function(a,b){return(a.start||'').localeCompare(b.start||'');});
+      });
 
-      // ④ 행 데이터 준비 {C:num|null, E:str|null, G:str|null, I:num|null}
+      // 행 데이터
       const rowData={};
       for(let i=5;i<=27;i++) rowData[i]={C:null,E:null,G:null,I:null};
       const warnings=[];
@@ -4032,64 +4032,71 @@ function exportScreenExcel(date){
         });
       });
 
-      // ⑤ sheet2.xml 수정 (데이터 시트)
       zip.file('xl/worksheets/sheet2.xml').async('string').then(function(xml){
-
-        // B3 날짜 교체
-        xml=setCellNum(xml,'B3',serial);
-
-        // 데이터 행 교체
+        // B3 날짜
+        xml=xmlSetNum(xml,'B3',serial);
+        // 데이터 행
         for(let row=5;row<=27;row++){
           const d=rowData[row];
-          xml=setCellNum(xml,'C'+row,d.C);
-          xml=setCellStr(xml,'E'+row,d.E);
-          xml=setCellStr(xml,'G'+row,d.G);
-          xml=setCellNum(xml,'I'+row,d.I);
+          xml=xmlSetNum(xml,'C'+row,d.C);
+          xml=xmlSetStr(xml,'E'+row,d.E);
+          xml=xmlSetStr(xml,'G'+row,d.G);
+          xml=xmlSetNum(xml,'I'+row,d.I);
         }
-
         zip.file('xl/worksheets/sheet2.xml',xml);
 
-        // ⑥ workbook.xml — 시트 이름 변경 + Sheet1 제거
+        // workbook.xml — 시트 이름 변경 + Sheet1 숨김 처리
         zip.file('xl/workbook.xml').async('string').then(function(wbXml){
-          wbXml=wbXml.replace(/name="5-23-[^"]*"/,`name="${sheetName}"`);
-          // Sheet1(빈 시트) 제거
-          wbXml=wbXml.replace(/<sheet name="Sheet1"[^/]*\/>/,'');
+          // 5-23-토 → 당일 날짜
+          wbXml=wbXml.replace(/name="5-23-[^"]*"/,'name="'+sheetName+'"');
+          // Sheet1 숨김 (삭제하면 XML 손상 발생)
+          wbXml=wbXml.replace(/<sheet name="Sheet1"/,'<sheet name="Sheet1" state="hidden"');
           zip.file('xl/workbook.xml',wbXml);
 
-          // workbook.xml.rels — rId1(Sheet1) 제거
-          zip.file('xl/_rels/workbook.xml.rels').async('string').then(function(relsXml){
-            relsXml=relsXml.replace(/<Relationship[^>]*rId1[^>]*\/>/,'');
-            zip.file('xl/_rels/workbook.xml.rels',relsXml);
-
-            // [Content_Types].xml — sheet1.xml 항목 제거
-            zip.file('[Content_Types].xml').async('string').then(function(ctXml){
-              ctXml=ctXml.replace(/<Override[^>]*sheet1\.xml[^>]*\/>/,'');
-              zip.file('[Content_Types].xml',ctXml);
-
-              // ⑦ sheet1.xml 제거
-              zip.remove('xl/worksheets/sheet1.xml');
-
-              // ⑧ 다운로드
-              zip.generateAsync({
-                type:'blob',
-                mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                compression:'DEFLATE',compressionOptions:{level:6}
-              }).then(function(blob){
-                const url=URL.createObjectURL(blob);
-                const a=document.createElement('a');
-                a.href=url;a.download=sheetName+' 업무현황.xlsx';a.click();
-                URL.revokeObjectURL(url);
-                if(warnings.length) alert('⚠ '+[...new Set(warnings)].join(', ')+'의 예약이 5건을 초과합니다.\n처음 5건만 출력됩니다.');
-              });
-            });
+          zip.generateAsync({
+            type:'blob',
+            mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            compression:'DEFLATE',compressionOptions:{level:6}
+          }).then(function(blob){
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement('a');
+            a.href=url;a.download=sheetName+' 업무현황.xlsx';a.click();
+            URL.revokeObjectURL(url);
+            if(warnings.length) alert('⚠ '+[...new Set(warnings)].join(', ')+'의 예약이 5건을 초과합니다.\n처음 5건만 출력됩니다.');
           });
         });
       });
     });
   }catch(err){
-    console.error('엑셀 출력 오류:',err);
+    console.error('엑셀 오류:',err);
     alert('엑셀 출력 오류: '+err.message);
   }
+}
+
+function xmlSetNum(xml,ref,val){
+  const r=ref.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return xml.replace(
+    new RegExp('<c r="'+r+'"([^/>"]*(?:"[^"]*"[^/>"]*)*)(/>|>(?:[^<]|<(?!/c>))*</c>)','g'),
+    function(_,attrs){
+      const sm=attrs.match(/s="(\d+)"/);
+      const sa=sm?' s="'+sm[1]+'"':'';
+      if(val===null||val===undefined) return '<c r="'+ref+'"'+sa+'/>';
+      return '<c r="'+ref+'"'+sa+'><v>'+val+'</v></c>';
+    }
+  );
+}
+function xmlSetStr(xml,ref,val){
+  const r=ref.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return xml.replace(
+    new RegExp('<c r="'+r+'"([^/>"]*(?:"[^"]*"[^/>"]*)*)(/>|>(?:[^<]|<(?!/c>))*</c>)','g'),
+    function(_,attrs){
+      const sm=attrs.match(/s="(\d+)"/);
+      const sa=sm?' s="'+sm[1]+'"':'';
+      if(!val) return '<c r="'+ref+'"'+sa+'/>';
+      const esc=String(val).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return '<c r="'+ref+'"'+sa+' t="inlineStr"><is><t>'+esc+'</t></is></c>';
+    }
+  );
 }
 
 // 셀 값 교체 헬퍼 — 스타일(s=) 유지, 값만 교체
