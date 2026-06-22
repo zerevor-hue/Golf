@@ -3112,25 +3112,27 @@ function calcStats(){
   const selectedGrades=Array.from(document.querySelectorAll('.gradeChk')).filter(c=>c.checked).map(c=>c.value);
 
   // ── 기간 내 예약 집계 ──
-  // visits: 게임 수 합산 (1예약 1게임 = 1, 1예약 2게임 = 2)
-  // games: 동일 (별칭)
   const nameVisits={};
   ['screen','park'].forEach(type=>{
     Object.values(bookingsDB[type]).forEach(b=>{
       if(b.date>=from&&b.date<=to){
         const games=parseInt(b.games)||1;
         const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
-        // 시간대 분류
         const h=parseInt((b.start||'09:00').split(':')[0]);
         const tBucket=h<12?'09~12':h<15?'12~15':h<18?'15~18':'18~22';
-        // 평일/주말 분류
         const dow=new Date(b.date).getDay();
         const hMap=getHolidayMap(new Date(b.date).getFullYear());
         const isWeekend=(dow===0||dow===6||!!hMap[b.date]);
         names.forEach(name=>{
-          if(!nameVisits[name]) nameVisits[name]={visits:0,games:0,types:{screen:0,park:0},dates:[],times:{'09~12':0,'12~15':0,'15~18':0,'18~22':0},weekday:0,weekend:0};
-          nameVisits[name].visits+=games; // 게임 수만큼 카운트 (getMemberVisits와 일치)
+          if(!nameVisits[name]) nameVisits[name]={
+            visits:0,games:0,gamesScreen:0,gamesPark:0,
+            types:{screen:0,park:0},dates:[],
+            times:{'09~12':0,'12~15':0,'15~18':0,'18~22':0},weekday:0,weekend:0
+          };
+          nameVisits[name].visits+=games;
           nameVisits[name].games+=games;
+          if(type==='screen') nameVisits[name].gamesScreen+=games;
+          else                nameVisits[name].gamesPark+=games;
           nameVisits[name].types[type]++;
           nameVisits[name].dates.push(b.date);
           nameVisits[name].times[tBucket]++;
@@ -3171,15 +3173,21 @@ function calcStats(){
   // 1. 이름
   if(nameQ) filtered=filtered.filter(([name])=>name.toLowerCase().includes(nameQ));
 
-  // 2. 방문 횟수
-  filtered=filtered.filter(([,v])=>v.visits>=visitMin&&v.visits<=visitMax);
+  // 2. 방문 횟수 (선택 타입 기준)
+  // 타입에 따라 어떤 카운트를 기준으로 할지 결정
+  const getCount=(v)=>{
+    if(fScreen&&!fPark) return v.gamesScreen;   // 스크린만: 스크린 게임 수
+    if(fPark&&!fScreen) return v.gamesPark;     // 파크만: 파크 게임 수
+    return v.visits;                             // 둘 다 or 없음: 합계
+  };
+  filtered=filtered.filter(([,v])=>getCount(v)>=visitMin&&getCount(v)<=visitMax);
 
-  // 3. 주 이용 — 스크린만/파크만/둘다 선택에 따라
+  // 3. 주 이용 타입 필터
   filtered=filtered.filter(([,v])=>{
-    const hasS=v.types.screen>0, hasP=v.types.park>0;
-    if(fScreen&&fPark) return hasS&&hasP;    // 둘 다 체크: 둘 다 이용한 사람만
-    if(fScreen&&!fPark) return hasS;          // 스크린만 체크
-    if(!fScreen&&fPark) return hasP;          // 파크만 체크
+    const hasS=v.gamesScreen>0, hasP=v.gamesPark>0;
+    if(fScreen&&fPark)  return hasS&&hasP;  // 둘 다: 두 가지 모두 이용한 사람
+    if(fScreen&&!fPark) return hasS;         // 스크린만: 스크린 이용자
+    if(!fScreen&&fPark) return hasP;         // 파크만: 파크 이용자
     return false;
   });
 
@@ -3222,11 +3230,14 @@ function calcStats(){
   }
 
   // ── 순위 렌더 ──
-  filtered.sort((a,b)=>b[1].visits-a[1].visits);
-  const max=filtered[0]?.[1].visits||1;
+  filtered.sort((a,b)=>getCount(b[1])-getCount(a[1]));
+  const max=getCount(filtered[0]?.[1])||1;
   const rc=['r1','r2','r3'];
   const countEl=document.getElementById('statsResultCount');
   if(countEl) countEl.textContent=`${filtered.length}명`;
+
+  // 표시용 게임 라벨
+  const gameLabel=fScreen&&!fPark?'스크린':fPark&&!fScreen?'파크':'합계';
 
   document.getElementById('rankBody').innerHTML=filtered.length===0
     ?`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted);">조건에 맞는 방문자가 없습니다</td></tr>`
@@ -3236,14 +3247,15 @@ function calcStats(){
       const gradeHtml=grades.length
         ?grades.map(g=>`<span class="badge ${gc(g)}">${g}</span>`).join(' ')
         :'<span class="badge badge-gray">미등록</span>';
-      const isG=v.types.park>=v.types.screen;
-      const tag=(v.types.screen>0?'<span class="badge b-screen">스크린</span>':'')+
-                (v.types.park>0?'<span class="badge b-park">파크</span>':'');
+      const cnt=getCount(v);
+      const isG=v.gamesPark>=v.gamesScreen;
+      const tag=(v.gamesScreen>0?'<span class="badge b-screen">스크린</span>':'')+
+                (v.gamesPark>0?'<span class="badge b-park">파크</span>':'');
       return `<tr>
         <td class="rn ${rc[i]||''}">${i+1}</td>
         <td style="font-weight:800;">${name}</td>
-        <td><div style="font-weight:800;">${v.visits}게임</div>
-          <div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(v.visits/max*100)}%"></div></div></td>
+        <td><div style="font-weight:800;">${cnt}게임 <span style="font-size:10px;color:var(--muted);">(${gameLabel})</span></div>
+          <div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(cnt/max*100)}%"></div></div></td>
         <td>${tag}</td>
         <td>${gradeHtml}</td>
       </tr>`;
