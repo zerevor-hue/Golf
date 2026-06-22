@@ -807,7 +807,7 @@ td.slot.dragging { opacity: 0.4; }
             <input type="checkbox" id="filterPark" checked onchange="calcStats()" style="width:16px;height:16px;cursor:pointer;accent-color:#1a7a4a;"> 파크골프
           </label>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:5px;">둘 다 선택 시 스크린+파크 이용자까지 포함</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px;">둘 다 체크 시 스크린+파크 모두 이용한 사람만 표시</div>
       </div>
 
       <!-- 4-b. 이용 시간대 & 평일/주말 -->
@@ -879,7 +879,10 @@ td.slot.dragging { opacity: 0.4; }
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div style="font-size:14px;font-weight:800;">🏆 방문 순위</div>
-      <div id="statsResultCount" style="font-size:12px;color:var(--muted);font-weight:700;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div id="statsResultCount" style="font-size:12px;color:var(--muted);font-weight:700;"></div>
+        <button onclick="exportStatsExcel()" style="background:#1a7a4a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀 출력</button>
+      </div>
     </div>
     <table class="rank-table">
       <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>게임 횟수</th><th>주 이용</th><th>등급</th></tr></thead>
@@ -2223,18 +2226,22 @@ function renderSummaryCol(type,date,bayNames){
   // 1. KPI
   const bookingCount=bookings.length;
   const peopleTotal=bookings.reduce((s,b)=>s+(parseInt(b.people)||0),0);
-  // 총 게임 수 = 회원별 게임 카운트의 합
-  // (예: 이름 "A B" 2게임 → A:2 + B:2 = 4)
-  // 이름이 비어있으면 인원수 사용 (fallback)
-  const gamesTotal=bookings.reduce((s,b)=>{
+  // 총 게임 수: 이름 수와 인원수 중 큰 값 × 게임 수 (두 방식의 불일치 방지)
+  function getPeopleCount(b){
     const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
-    const peopleCount=names.length>0?names.length:(parseInt(b.people)||1);
-    const games=parseInt(b.games)||1;
-    return s+peopleCount*games;
-  },0);
+    const fromNames=names.length>0?names.length:0;
+    const fromField=parseInt(b.people)||1;
+    return Math.max(fromNames,fromField);
+  }
+  const gamesTotal=bookings.reduce((s,b)=>s+getPeopleCount(b)*(parseInt(b.games)||1),0);
   // 가동률 = 예약된 슬롯 / 전체 슬롯 (방수 × 78슬롯[9:00~22:00, 10분 단위])
   const totalSlots=bayNames.length*78;
-  const usedSlots=bookings.reduce((s,b)=>s+(si(b.end)-si(b.start)),0);
+  const usedSlots=bookings.reduce((s,b)=>{
+    const start=si(b.start);
+    let end=si(b.end);
+    if(end===-1) end=slots.length; // 22:00은 슬롯 배열 범위 밖 → 끝으로 처리
+    return s+Math.max(0,end-start);
+  },0);
   const rate=totalSlots?Math.round(usedSlots/totalSlots*100):0;
 
   document.getElementById(prefix+'Bookings').textContent=bookingCount;
@@ -2316,14 +2323,12 @@ function renderSummaryCol(type,date,bayNames){
       </div>`;
   }
 
-  // 4. 홀 단위 집계 (회원별 카운트 합산 = 이름 개수 × 게임 수)
+  // 4. 홀 단위 집계 (회원별 카운트 합산)
   const holeCounts={};
   bookings.forEach(b=>{
     const h=b.hole||'미지정';
-    const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
-    const peopleCount=names.length>0?names.length:(parseInt(b.people)||1);
     const games=parseInt(b.games)||1;
-    holeCounts[h]=(holeCounts[h]||0)+peopleCount*games;
+    holeCounts[h]=(holeCounts[h]||0)+getPeopleCount(b)*games;
   });
   const holeEl=document.getElementById(prefix+'Holes');
   if(!Object.keys(holeCounts).length){
@@ -2702,7 +2707,8 @@ function analysisTags(name){
   const a=analyzeBookings(name);
   if(!a) return '<span style="color:var(--faint);font-size:12px;">이력 없음</span>';
   const tags=[];
-  if(a.sc>0&&a.pk>0) tags.push('<span class="badge b-both">스크린+파크</span>');
+  if(a.sc>0) tags.push('<span class="badge b-screen">스크린</span>');
+  if(a.pk>0) tags.push('<span class="badge b-park">파크</span>');
   else if(a.sc>0) tags.push('<span class="badge b-screen">스크린골프</span>');
   else tags.push('<span class="badge b-park">파크골프</span>');
   if(a.weCnt>=a.wdCnt) tags.push('<span class="badge b-weekend">주말 선호</span>');
@@ -3171,10 +3177,10 @@ function calcStats(){
   // 3. 주 이용 — 스크린만/파크만/둘다 선택에 따라
   filtered=filtered.filter(([,v])=>{
     const hasS=v.types.screen>0, hasP=v.types.park>0;
-    if(fScreen&&fPark) return hasS||hasP;   // 둘 다 체크: 스크린+파크 모두 포함
-    if(fScreen&&!fPark) return hasS;         // 스크린만: 스크린 이용자 (파크 병행도 포함)
-    if(!fScreen&&fPark) return hasP;         // 파크만: 파크 이용자 (스크린 병행도 포함)
-    return false; // 둘 다 해제
+    if(fScreen&&fPark) return hasS&&hasP;    // 둘 다 체크: 둘 다 이용한 사람만
+    if(fScreen&&!fPark) return hasS;          // 스크린만 체크
+    if(!fScreen&&fPark) return hasP;          // 파크만 체크
+    return false;
   });
 
   // 4. 등급
@@ -3231,10 +3237,8 @@ function calcStats(){
         ?grades.map(g=>`<span class="badge ${gc(g)}">${g}</span>`).join(' ')
         :'<span class="badge badge-gray">미등록</span>';
       const isG=v.types.park>=v.types.screen;
-      const tag=v.types.screen>0&&v.types.park>0
-        ?'<span class="badge b-both">스크린+파크</span>'
-        :v.types.screen>0?'<span class="badge b-screen">스크린</span>'
-        :'<span class="badge b-park">파크</span>';
+      const tag=(v.types.screen>0?'<span class="badge b-screen">스크린</span>':'')+
+                (v.types.park>0?'<span class="badge b-park">파크</span>':'');
       return `<tr>
         <td class="rn ${rc[i]||''}">${i+1}</td>
         <td style="font-weight:800;">${name}</td>
@@ -3244,6 +3248,139 @@ function calcStats(){
         <td>${gradeHtml}</td>
       </tr>`;
     }).join('');
+}
+
+// ── 방문통계 엑셀 출력 ──
+function exportStatsExcel(){
+  if(typeof JSZip==='undefined'){alert('라이브러리 로딩 중입니다. 잠시 후 다시 시도해주세요.');return;}
+
+  // 현재 필터된 결과 재수집 (calcStats와 동일한 로직으로 filtered 재구성)
+  // nameVisits는 calcStats 실행 후 DOM에 이미 반영돼 있으므로 rankBody에서 파싱하지 않고
+  // calcStats를 한 번 더 실행해 직접 가져옴
+  const rows=[];
+  document.querySelectorAll('#rankBody tr').forEach(tr=>{
+    const tds=tr.querySelectorAll('td');
+    if(tds.length<5) return;
+    const name=tds[1]?.textContent?.trim();
+    if(!name||name==='조건에 맞는 방문자가 없습니다') return;
+    const games=tds[2]?.textContent?.replace('게임','').trim();
+    const typeTag=tds[3]?.textContent?.trim();
+    const m=Object.values(membersDB).find(x=>x.name===name);
+    rows.push({
+      name,
+      phone:(m?.phone)||'',
+      games:parseInt(games)||0,
+      type:typeTag||''
+    });
+  });
+
+  if(rows.length===0){alert('출력할 데이터가 없습니다.');return;}
+
+  // JSZip으로 xlsx 생성
+  const zip=new JSZip();
+
+  // 날짜 범위 텍스트
+  const fromEl=document.getElementById('statsFrom');
+  const toEl=document.getElementById('statsTo');
+  const rangeText=(fromEl?.value||'')+' ~ '+(toEl?.value||'');
+
+  // xlsx XML 생성
+  const sharedStrings=[];
+  const ssIdx={};
+  function getSS(s){
+    const str=String(s||'');
+    if(ssIdx[str]===undefined){ssIdx[str]=sharedStrings.length;sharedStrings.push(str);}
+    return ssIdx[str];
+  }
+
+  // 헤더
+  const headers=['순위','이름','연락처','총 게임 수','주 이용'];
+  headers.forEach(h=>getSS(h));
+
+  // 데이터 행 XML
+  let rowsXml='';
+  // 헤더 행
+  rowsXml+=`<row r="1">`;
+  headers.forEach((h,ci)=>{
+    const col=String.fromCharCode(65+ci);
+    rowsXml+=`<c r="${col}1" t="s"><v>${getSS(h)}</v></c>`;
+  });
+  rowsXml+=`</row>`;
+
+  // 기간 행
+  rowsXml+=`<row r="2"><c r="A2" t="s"><v>${getSS('기간: '+rangeText)}</v></c></row>`;
+
+  // 데이터
+  rows.forEach((row,i)=>{
+    const r=i+3;
+    rowsXml+=`<row r="${r}">`;
+    rowsXml+=`<c r="A${r}" t="s"><v>${getSS(String(i+1))}</v></c>`;
+    rowsXml+=`<c r="B${r}" t="s"><v>${getSS(row.name)}</v></c>`;
+    rowsXml+=`<c r="C${r}" t="s"><v>${getSS(row.phone)}</v></c>`;
+    rowsXml+=`<c r="D${r}"><v>${row.games}</v></c>`;
+    rowsXml+=`<c r="E${r}" t="s"><v>${getSS(row.type)}</v></c>`;
+    rowsXml+='</row>';
+  });
+
+  // sheet1.xml
+  const sheetXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>${rowsXml}</sheetData>
+</worksheet>`;
+
+  // sharedStrings.xml
+  const ssXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">
+${sharedStrings.map(s=>`<si><t xml:space="preserve">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</t></si>`).join('')}
+</sst>`;
+
+  // workbook.xml
+  const wbXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="방문통계" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  // rels
+  const relsXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`;
+
+  const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+</Types>`;
+
+  zip.file('[Content_Types].xml', contentTypes);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+  zip.file('xl/workbook.xml', wbXml);
+  zip.file('xl/_rels/workbook.xml.rels', relsXml);
+  zip.file('xl/worksheets/sheet1.xml', sheetXml);
+  zip.file('xl/sharedStrings.xml', ssXml);
+
+  // 파일명
+  const today=toDateStr(new Date());
+  const fname=`방문통계_${today}.xlsx`;
+
+  zip.generateAsync({
+    type:'blob',
+    mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    compression:'DEFLATE',compressionOptions:{level:6}
+  }).then(function(blob){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=fname;a.click();
+    URL.revokeObjectURL(url);
+  });
 }
 
 // ══ 탭 전환 ══
