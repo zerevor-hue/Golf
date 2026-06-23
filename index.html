@@ -807,7 +807,7 @@ td.slot.dragging { opacity: 0.4; }
             <input type="checkbox" id="filterPark" checked onchange="calcStats()" style="width:16px;height:16px;cursor:pointer;accent-color:#1a7a4a;"> 파크골프
           </label>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:5px;">둘 다 체크 시 스크린+파크 모두 이용한 사람만 표시</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px;">체크한 항목에 방문한 사람만 표시</div>
       </div>
 
       <!-- 4-b. 이용 시간대 & 평일/주말 -->
@@ -885,7 +885,7 @@ td.slot.dragging { opacity: 0.4; }
       </div>
     </div>
     <table class="rank-table">
-      <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>게임 횟수</th><th>주 이용</th><th>등급</th></tr></thead>
+      <thead><tr><th style="width:36px;">순위</th><th>이름</th><th>스크린</th><th>파크</th><th>등급</th></tr></thead>
       <tbody id="rankBody"></tbody>
     </table>
   </div>
@@ -3173,21 +3173,19 @@ function calcStats(){
   // 1. 이름
   if(nameQ) filtered=filtered.filter(([name])=>name.toLowerCase().includes(nameQ));
 
-  // 2. 방문 횟수 (선택 타입 기준)
-  // 타입에 따라 어떤 카운트를 기준으로 할지 결정
+  // 2. 방문 횟수 필터 (선택 타입 합산 기준)
   const getCount=(v)=>{
-    if(fScreen&&!fPark) return v.gamesScreen;   // 스크린만: 스크린 게임 수
-    if(fPark&&!fScreen) return v.gamesPark;     // 파크만: 파크 게임 수
-    return v.visits;                             // 둘 다 or 없음: 합계
+    if(fScreen&&!fPark) return v.gamesScreen;
+    if(fPark&&!fScreen) return v.gamesPark;
+    return v.gamesScreen+v.gamesPark;
   };
   filtered=filtered.filter(([,v])=>getCount(v)>=visitMin&&getCount(v)<=visitMax);
 
-  // 3. 주 이용 타입 필터
+  // 3. 주 이용 타입 필터 (OR 조건 — 체크한 타입에 방문이 있는 사람)
   filtered=filtered.filter(([,v])=>{
-    const hasS=v.gamesScreen>0, hasP=v.gamesPark>0;
-    if(fScreen&&fPark)  return hasS&&hasP;  // 둘 다: 두 가지 모두 이용한 사람
-    if(fScreen&&!fPark) return hasS;         // 스크린만: 스크린 이용자
-    if(!fScreen&&fPark) return hasP;         // 파크만: 파크 이용자
+    if(fScreen&&fPark) return v.gamesScreen>0||v.gamesPark>0; // 둘 다: 어느 쪽이든 방문자
+    if(fScreen)        return v.gamesScreen>0;                 // 스크린만: 스크린 방문자
+    if(fPark)          return v.gamesPark>0;                   // 파크만: 파크 방문자
     return false;
   });
 
@@ -3231,13 +3229,12 @@ function calcStats(){
 
   // ── 순위 렌더 ──
   filtered.sort((a,b)=>getCount(b[1])-getCount(a[1]));
-  const max=getCount(filtered[0]?.[1])||1;
+  const max=Math.max(
+    ...filtered.map(([,v])=>Math.max(v.gamesScreen||0,v.gamesPark||0)),1
+  );
   const rc=['r1','r2','r3'];
   const countEl=document.getElementById('statsResultCount');
   if(countEl) countEl.textContent=`${filtered.length}명`;
-
-  // 표시용 게임 라벨
-  const gameLabel=fScreen&&!fPark?'스크린':fPark&&!fScreen?'파크':'합계';
 
   document.getElementById('rankBody').innerHTML=filtered.length===0
     ?`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted);">조건에 맞는 방문자가 없습니다</td></tr>`
@@ -3247,16 +3244,14 @@ function calcStats(){
       const gradeHtml=grades.length
         ?grades.map(g=>`<span class="badge ${gc(g)}">${g}</span>`).join(' ')
         :'<span class="badge badge-gray">미등록</span>';
-      const cnt=getCount(v);
-      const isG=v.gamesPark>=v.gamesScreen;
-      const tag=(v.gamesScreen>0?'<span class="badge b-screen">스크린</span>':'')+
-                (v.gamesPark>0?'<span class="badge b-park">파크</span>':'');
+      const sc=v.gamesScreen||0, pk=v.gamesPark||0;
+      const scBar=`<div class="bbar-wrap"><div class="bbar-fill" style="width:${Math.round(sc/max*100)}%"></div></div>`;
+      const pkBar=`<div class="bbar-wrap"><div class="bbar-fill g" style="width:${Math.round(pk/max*100)}%"></div></div>`;
       return `<tr>
         <td class="rn ${rc[i]||''}">${i+1}</td>
         <td style="font-weight:800;">${name}</td>
-        <td><div style="font-weight:800;">${cnt}게임 <span style="font-size:10px;color:var(--muted);">(${gameLabel})</span></div>
-          <div class="bbar-wrap"><div class="bbar-fill${isG?' g':''}" style="width:${Math.round(cnt/max*100)}%"></div></div></td>
-        <td>${tag}</td>
+        <td><div style="font-weight:800;">${sc}게임</div>${sc>0?scBar:''}</td>
+        <td><div style="font-weight:800;">${pk}게임</div>${pk>0?pkBar:''}</td>
         <td>${gradeHtml}</td>
       </tr>`;
     }).join('');
@@ -3275,14 +3270,15 @@ function exportStatsExcel(){
     if(tds.length<5) return;
     const name=tds[1]?.textContent?.trim();
     if(!name||name==='조건에 맞는 방문자가 없습니다') return;
-    const games=tds[2]?.textContent?.replace('게임','').trim();
-    const typeTag=tds[3]?.textContent?.trim();
     const m=Object.values(membersDB).find(x=>x.name===name);
+    // nameVisits는 scope 밖이므로 DOM에서 직접 파싱
+    const scText=tds[2]?.textContent?.match(/(\d+)/)?.[1]||'0';
+    const pkText=tds[3]?.textContent?.match(/(\d+)/)?.[1]||'0';
     rows.push({
       name,
       phone:(m?.phone)||'',
-      games:parseInt(games)||0,
-      type:typeTag||''
+      gamesScreen:parseInt(scText)||0,
+      gamesPark:parseInt(pkText)||0,
     });
   });
 
@@ -3306,12 +3302,11 @@ function exportStatsExcel(){
   }
 
   // 헤더
-  const headers=['순위','이름','연락처','총 게임 수','주 이용'];
+  const headers=['순위','이름','연락처','스크린 게임','파크 게임'];
   headers.forEach(h=>getSS(h));
 
   // 데이터 행 XML
   let rowsXml='';
-  // 헤더 행
   rowsXml+=`<row r="1">`;
   headers.forEach((h,ci)=>{
     const col=String.fromCharCode(65+ci);
@@ -3319,18 +3314,16 @@ function exportStatsExcel(){
   });
   rowsXml+=`</row>`;
 
-  // 기간 행
   rowsXml+=`<row r="2"><c r="A2" t="s"><v>${getSS('기간: '+rangeText)}</v></c></row>`;
 
-  // 데이터
   rows.forEach((row,i)=>{
     const r=i+3;
     rowsXml+=`<row r="${r}">`;
     rowsXml+=`<c r="A${r}" t="s"><v>${getSS(String(i+1))}</v></c>`;
     rowsXml+=`<c r="B${r}" t="s"><v>${getSS(row.name)}</v></c>`;
     rowsXml+=`<c r="C${r}" t="s"><v>${getSS(row.phone)}</v></c>`;
-    rowsXml+=`<c r="D${r}"><v>${row.games}</v></c>`;
-    rowsXml+=`<c r="E${r}" t="s"><v>${getSS(row.type)}</v></c>`;
+    rowsXml+=`<c r="D${r}"><v>${row.gamesScreen||0}</v></c>`;
+    rowsXml+=`<c r="E${r}"><v>${row.gamesPark||0}</v></c>`;
     rowsXml+='</row>';
   });
 
