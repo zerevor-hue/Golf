@@ -2465,7 +2465,7 @@ function updateEndOpts(){
 function calcDurationMinutes(type,people,games){
   const p=parseInt(people)||1;
   const g=parseInt(games)||1;
-  const onePerMin=type==='park' ? p*30+10 : p*60+30;
+  const onePerMin=type==='park' ? p*30+30 : p*60+30;
   return onePerMin*g;
 }
 function calcDefaultEndTime(type,people,games,startTime){
