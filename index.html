@@ -1288,16 +1288,20 @@ onValue(ref(db, 'bookings'), snapshot => {
   bookingsDB.screen = newDB.screen;
   bookingsDB.park = newDB.park;
 
-  ['screen','park'].forEach(type => {
-    if (typeof refreshTable === 'function') refreshTable(type);
-    if (typeof renderCal === 'function') renderCal(type);
-  });
-  document.getElementById('syncStatus').textContent = '✓ 동기화됨';
-  document.getElementById('syncStatus').style.color = '#1a7a4a';
-
   if (!fbInitialized) {
     fbInitialized = true;
-    document.getElementById('loadingOverlay').style.display = 'none';
+    const ov = document.getElementById('loadingOverlay');
+    if (ov) ov.style.display = 'none';
+  }
+  try {
+    ['screen','park'].forEach(type => {
+      if (typeof refreshTable === 'function') refreshTable(type);
+      if (typeof renderCal === 'function') renderCal(type);
+    });
+    document.getElementById('syncStatus').textContent = '✓ 동기화됨';
+    document.getElementById('syncStatus').style.color = '#1a7a4a';
+  } catch (e) {
+    console.error('테이블 갱신 오류:', e);
   }
 }, err => {
   document.getElementById('syncStatus').textContent = '⚠ 연결 실패';
@@ -2334,13 +2338,12 @@ function updateEndOpts(){
 
 // 자동 종료시간 계산 (분 단위)
 // 스크린골프: (인원수 × 60 + 30) × 게임수
-// 파크골프: (인원수 × 30 + 30) × 게임수
+// 파크골프: (인원수 × 30 × 게임수) + 30
 function calcDurationMinutes(type,people,games){
   const p=parseInt(people)||1;
   const g=parseInt(games)||1;
   if(type==='park') return (p*30*g)+30;
   return (p*60+30)*g;
-}
 }
 function calcDefaultEndTime(type,people,games,startTime){
   const minutes=calcDurationMinutes(type,people,games);
