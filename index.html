@@ -151,85 +151,6 @@ td.slot.dragging { opacity: 0.4; }
 .slot-sub { font-size: 12px; font-weight: 700; display: block; opacity: 0.85; line-height: 1.5; white-space: nowrap; }
 .slot-memo { font-size: 11px; font-weight: 600; display: block; opacity: 0.75; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* 종료 임박 & 시간 초과 타석 강조 */
-@keyframes pulseOvertime {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55), inset 0 0 0 1px rgba(220, 38, 38, 0.4); }
-  50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0), inset 0 0 0 2px rgba(220, 38, 38, 0.85); }
-}
-.slot-content.slot-ending-soon {
-  border: 2px solid #d97706 !important;
-  box-shadow: 0 0 8px rgba(217, 119, 6, 0.35);
-}
-.slot-content.slot-overtime {
-  border: 2.5px solid #dc2626 !important;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(220, 38, 38, 0.08),
-    rgba(220, 38, 38, 0.08) 6px,
-    transparent 6px,
-    transparent 12px
-  ) !important;
-  animation: pulseOvertime 1.6s infinite;
-}
-.slot-status-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.3;
-  padding: 1px 6px;
-  border-radius: 8px;
-  margin-bottom: 1px;
-  white-space: nowrap;
-}
-.slot-status-badge.ending-soon {
-  background: #d97706;
-  color: #fff;
-}
-.slot-status-badge.overtime {
-  background: #dc2626;
-  color: #fff;
-}
-
-/* 상단 실시간 종료임박·시간초과 알림 바 */
-.live-alert-bar {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: #fff;
-  border: 1px solid rgba(220, 38, 38, 0.25);
-  border-radius: 10px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-}
-.live-alert-bar.show { display: flex; }
-.live-alert-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.1s, opacity 0.1s;
-}
-.live-alert-chip:hover { opacity: 0.9; transform: translateY(-1px); }
-.live-alert-chip.overtime { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-.live-alert-chip.ending-soon { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-.live-alert-chip .chip-done-btn {
-  background: rgba(0,0,0,0.12);
-  border: none;
-  border-radius: 10px;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 800;
-  color: inherit;
-  cursor: pointer;
-}
-.live-alert-chip .chip-done-btn:hover { background: rgba(0,0,0,0.22); }
-
 /* 예약 모달 회원 자동완성 드롭다운 */
 .m-auto-dropdown {
   display: none;
@@ -739,7 +660,6 @@ body.work-edit-mode .big-cal-day { cursor: copy; }
       <button onclick="forceReload()" style="padding:6px 12px;font-size:12px;font-weight:700;background:#fff;border:0.5px solid var(--border-md);border-radius:6px;cursor:pointer;font-family:inherit;" title="문제가 있을 때 클릭하면 서버에서 최신 데이터를 다시 불러옵니다">🔄 새로고침</button>
     </div>
   </div>
-  <div class="live-alert-bar" id="liveAlertBar"></div>
   <div class="boards">
     <div class="board screen" id="boardScreen"></div>
     <div class="board park" id="boardPark"></div>
@@ -1814,7 +1734,7 @@ function attachSlotEvents(td,type,bayIdx,time,bayName){
     if(drag&&drag.moved) return;
     if(selectDrag&&selectDrag.committed) return;
     const found=getAt(type,boardState[type].date,bayIdx,time);
-    if(found && time===found.b.start){
+    if(found){
       const rect=td.getBoundingClientRect();
       const rx=e.clientX-rect.left;
       const ry=e.clientY-rect.top;
@@ -2115,40 +2035,6 @@ function onTED(){
   drag=null;
 }
 
-function toMin(hhmm){
-  if(!hhmm) return 0;
-  const [h,m]=String(hhmm).split(':').map(Number);
-  return (h||0)*60+(m||0);
-}
-
-// 오늘 날짜 & 미완료(!dimmed) 예약의 종료임박(10분 전 이내) / 시간초과 상태 판별
-function getBookingTimeAlert(b){
-  if(!b || b.dimmed===true) return null;
-  const todayStr=toDateStr(new Date());
-  if(b.date!==todayStr) return null;
-  const now=new Date();
-  const nowMin=now.getHours()*60+now.getMinutes();
-  const startMin=toMin(b.start);
-  const endMin=toMin(b.end);
-  if(nowMin>=endMin){
-    const overMin=nowMin-endMin;
-    return {
-      status:'overtime',
-      overMin,
-      badgeText: overMin>0 ? `🚨 +${overMin}분 초과` : '🚨 시간종료'
-    };
-  }
-  const remainMin=endMin-nowMin;
-  if(nowMin>=startMin && remainMin>0 && remainMin<=10){
-    return {
-      status:'ending-soon',
-      remainMin,
-      badgeText:`⏰ 종료 ${remainMin}분전`
-    };
-  }
-  return null;
-}
-
 function refreshTable(type){
   const tbody=document.getElementById(`tbody_${type}`); if(!tbody) return;
   const date=boardState[type].date,timeSlots=slots.slice(0,-1);
@@ -2171,9 +2057,6 @@ function refreshTable(type){
         const isStart=(time===b.start),duration=si(b.end)-si(b.start),totalHeight=duration*22;
         if(isStart){
           td.style.overflow='visible'; td.style.position='relative'; td.style.zIndex='3';
-          const timeAlert=getBookingTimeAlert(b);
-          const alertClass=timeAlert?` slot-${timeAlert.status}`:'';
-          const alertBadge=timeAlert?`<span class="slot-status-badge ${timeAlert.status}">${timeAlert.badgeText}</span>`:'';
           const memoLine=b.note?`<span class="slot-memo" style="color:${p.text}">📝 ${b.note}</span>`:'';
           const names=(b.name||'').trim().split(/\s+/).filter(Boolean);
           const nameLines=names.map(n=>{
@@ -2182,7 +2065,7 @@ function refreshTable(type){
               ${nbl?'⚠ ':''}${n}
             </span>`;
           }).join('');
-          const blLabel=bl&&names.length<=1?`<span style="font-size:10px;font-weight:800;color:#c0392b;display:block;">⚠ 블랙리스트</span>`:'';
+          const blLabel=bl&&names.length<=1?`<span style="font-size:10px;font-weight:800;color:#c0392b;">⚠ 블랙리스트</span>`:'';
           const hole=b.hole||'';
           const isStandard=(hole==='18홀'||hole==='');
           const holeSpan=hole
@@ -2190,26 +2073,20 @@ function refreshTable(type){
             : '';
           const games=parseInt(b.games||1);
           const gamesSpan=games>1?`<span style="color:#c0392b;font-weight:800;">${games}게임</span> `:'';
-          td.innerHTML=`<div class="slot-content${alertClass}" style="height:${totalHeight}px;background:${p.bg};border:1.5px solid ${dimmed?'rgba(150,150,150,0.5)':bl?'rgba(180,0,0,0.5)':'rgba(0,0,0,0.45)'};border-radius:4px;pointer-events:none;${dimmed?'opacity:0.65;':''}">
-            ${alertBadge}${blLabel}
+          td.innerHTML=`<div class="slot-content" style="height:${totalHeight}px;background:${p.bg};border:1.5px solid ${dimmed?'rgba(150,150,150,0.5)':bl?'rgba(180,0,0,0.5)':'rgba(0,0,0,0.45)'};border-radius:4px;pointer-events:none;${dimmed?'opacity:0.65;':''}">
+            ${blLabel}
             <span class="slot-time" style="color:${p.text}">${b.start} ~ ${b.end}</span>
             ${nameLines}
             <span class="slot-sub" style="color:${p.text}">${b.people}명 ${gamesSpan}${holeSpan}</span>${memoLine}</div>`;
           const cbtn=document.createElement('button');
           cbtn.className='slot-check-btn';
-          cbtn.title=dimmed?'완료 해제':'완료(퇴실) 체크';
           cbtn.textContent=dimmed?'✓':'';
           cbtn.style.cssText=`position:absolute;top:3px;right:3px;width:18px;height:18px;
-            border-radius:50%;z-index:5;pointer-events:auto;cursor:pointer;
-            border:1.5px solid ${dimmed?'rgba(60,60,60,0.8)':timeAlert?'#dc2626':'rgba(0,0,0,0.35)'};
-            background:${dimmed?'rgba(60,60,60,0.5)':timeAlert?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.45)'};
-            color:${dimmed?'#fff':'#333'};font-size:9px;font-weight:900;padding:0;line-height:1;
+            border-radius:50%;z-index:5;pointer-events:none;cursor:default;
+            border:1.5px solid ${dimmed?'rgba(60,60,60,0.8)':'rgba(255,255,255,0.6)'};
+            background:${dimmed?'rgba(60,60,60,0.5)':'rgba(255,255,255,0.15)'};
+            color:#fff;font-size:9px;font-weight:900;padding:0;line-height:1;
             display:flex;align-items:center;justify-content:center;`;
-          cbtn.addEventListener('mousedown',ev=>ev.stopPropagation());
-          cbtn.addEventListener('click',ev=>{
-            ev.stopPropagation();
-            toggleDimmed(type,found.key);
-          });
           td.appendChild(cbtn);
         } else {td.style.overflow='visible';td.style.position='relative';td.innerHTML='';}
       } else {td.className='slot empty';td.style.cssText='';td.innerHTML='';}
@@ -2248,62 +2125,9 @@ function updateNowLine(type){
   nowLine.style.display='block';
 }
 
-// 30초마다 현재 시간선 및 종료임박·시간초과 타석 강조 자동 갱신
 setInterval(()=>{
-  if(drag||selectDrag) return;
-  BOARDS.forEach(cfg=>refreshTable(cfg.type));
-},30000);
-
-// 상단 실시간 종료임박·시간초과 알림 바 렌더링
-function refreshLiveAlertBar(){
-  const bar=document.getElementById('liveAlertBar');
-  if(!bar) return;
-  const todayStr=toDateStr(new Date());
-  const alerts=[];
-  BOARDS.forEach(cfg=>{
-    if(boardState[cfg.type].date!==todayStr) return;
-    Object.entries(bookingsDB[cfg.type]||{}).forEach(([key,b])=>{
-      if(!b||b.date!==todayStr||b.dimmed===true) return;
-      const a=getBookingTimeAlert(b);
-      if(a){
-        alerts.push({
-          type:cfg.type,
-          typeLabel:cfg.type==='screen'?'스크린':'파크',
-          bayName:cfg.bays[b.bayIdx]||'',
-          key,
-          b,
-          alert:a
-        });
-      }
-    });
-  });
-
-  if(!alerts.length){
-    bar.classList.remove('show');
-    bar.innerHTML='';
-    return;
-  }
-
-  // 시간초과 우선 정렬, 그 다음 남은 시간 적은 순
-  alerts.sort((x,y)=>{
-    if(x.alert.status!==y.alert.status) return x.alert.status==='overtime'?-1:1;
-    if(x.alert.status==='overtime') return (y.alert.overMin||0)-(x.alert.overMin||0);
-    return (x.alert.remainMin||0)-(y.alert.remainMin||0);
-  });
-
-  bar.innerHTML=`<span style="font-size:12px;font-weight:800;color:#1a1a1a;margin-right:4px;">🔔 현장 알림</span>` +
-    alerts.map(item=>{
-      const statusCls=item.alert.status;
-      const label=item.alert.status==='overtime'
-        ? (item.alert.overMin>0?`🚨 시간초과 (+${item.alert.overMin}분)`:`🚨 종료시간 도달`)
-        : `⏰ 종료 ${item.alert.remainMin}분전`;
-      return `<div class="live-alert-chip ${statusCls}" onclick="openModal('${item.type}',${item.b.bayIdx},'${item.b.start}')" title="클릭하여 예약 수정/연장">
-        <span>${label} · <strong>${item.typeLabel} ${item.bayName}</strong> (${escapeHtml(item.b.name)} ${item.b.start}~${item.b.end})</span>
-        <button class="chip-done-btn" onclick="event.stopPropagation();toggleDimmed('${item.type}','${item.key}')" title="완료(퇴실) 처리">✓ 완료</button>
-      </div>`;
-    }).join('');
-  bar.classList.add('show');
-}
+  BOARDS.forEach(cfg=>updateNowLine(cfg.type));
+},60000);
 
 // ══ 일일 요약 ══
 function refreshDailySummary(){
@@ -2315,7 +2139,6 @@ function refreshDailySummary(){
   BOARDS.forEach(cfg=>{
     renderSummaryCol(cfg.type,boardState[cfg.type].date,cfg.bays);
   });
-  refreshLiveAlertBar();
 }
 
 function renderSummaryCol(type,date,bayNames){
